@@ -31,6 +31,11 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Local SQLite database. The entire system runs against one on-device file.
+  sqflite: ^2.4.1
+  # Safe joining of directory + filename when locating the database file.
+  path: ^1.9.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

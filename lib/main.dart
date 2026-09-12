@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'database/database_helper.dart';
+
 Future<void> main() async {
   // Flutter normally connects to the Android system inside runApp().
   // Because we need to talk to Android *before* that (to lock orientation),
@@ -14,6 +16,10 @@ Future<void> main() async {
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
   ]);
+
+  // Open (and on first launch, create) the database before the UI appears,
+  // so every screen can assume it is ready.
+  await DatabaseHelper.instance.database;
 
   runApp(const BrewManagerApp());
 }
