@@ -1,6 +1,8 @@
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
+import 'user_repository.dart';
+
 /// Single point of access to the on-device SQLite database.
 ///
 /// This is a singleton: the whole app shares one open connection through
@@ -56,7 +58,9 @@ class DatabaseHelper {
       for (final statement in _createStatements) {
         await txn.execute(statement);
       }
-      // TODO(step 3): seed the default Manager account with a hashed PIN.
+      // Seed the one account that exists at install time. Its PIN must be
+      // changed on first launch before anything else is accessible.
+      await UserRepository.seedDefaultManager(txn);
     });
   }
 
