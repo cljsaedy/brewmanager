@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/app_user.dart';
-import 'pin_entry_screen.dart';
+import '../session/session.dart';
 
 /// Placeholder. Increment 3 replaces this with the POS grid.
 class BaristaHomeScreen extends StatelessWidget {
@@ -18,9 +18,7 @@ class BaristaHomeScreen extends StatelessWidget {
           IconButton(
             tooltip: 'Log out',
             icon: const Icon(Icons.logout),
-            onPressed: () => Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => const PinEntryScreen()),
-            ),
+            onPressed: Session.logOut,
           ),
         ],
       ),

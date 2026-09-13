@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../database/user_repository.dart';
 import '../models/app_user.dart';
+import '../session/session.dart';
 import '../widgets/pin_keypad.dart';
 import 'barista_home_screen.dart';
 import 'manager_home_screen.dart';
@@ -51,6 +52,8 @@ class _PinEntryScreenState extends State<PinEntryScreen> {
   /// Role detection and routing. pushReplacement removes this screen from
   /// the navigation stack so Back cannot return to it.
   void _goToHome(AppUser user) {
+    Session.currentUser = user;
+
     final Widget home = user.isManager
         ? ManagerHomeScreen(user: user)
         : BaristaHomeScreen(user: user);

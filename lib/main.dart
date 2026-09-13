@@ -5,6 +5,8 @@ import 'database/database_helper.dart';
 import 'database/user_repository.dart';
 import 'screens/change_pin_screen.dart';
 import 'screens/pin_entry_screen.dart';
+import 'session/idle_lock.dart';
+import 'session/session.dart';
 
 Future<void> main() async {
   // Flutter normally connects to the Android system inside runApp().
@@ -48,10 +50,15 @@ class BrewManagerApp extends StatelessWidget {
     return MaterialApp(
       title: 'BrewManager',
       debugShowCheckedModeBanner: false,
+      // Lets Session.logOut() navigate without a BuildContext.
+      navigatorKey: Session.navigatorKey,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.brown),
         useMaterial3: true,
       ),
+      // builder wraps every screen the app ever shows, so the idle timer
+      // sees touches on all of them.
+      builder: (context, child) => IdleLock(child: child!),
       home: home,
     );
   }

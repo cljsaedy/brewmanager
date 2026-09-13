@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/app_user.dart';
-import 'pin_entry_screen.dart';
+import '../session/session.dart';
 
 /// Placeholder. Increment 2 replaces this with configuration and receiving.
 class ManagerHomeScreen extends StatelessWidget {
@@ -18,9 +18,7 @@ class ManagerHomeScreen extends StatelessWidget {
           IconButton(
             tooltip: 'Log out',
             icon: const Icon(Icons.logout),
-            onPressed: () => Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => const PinEntryScreen()),
-            ),
+            onPressed: Session.logOut,
           ),
         ],
       ),
