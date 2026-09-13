@@ -45,12 +45,13 @@ class UserRepository {
     );
   }
 
-  /// True while any active Manager still has the seeded default PIN.
+  /// Returns an active Manager who still has the seeded default PIN, or null
+  /// if the default has been changed.
   ///
   /// This is how "force PIN change on first launch" is detected without a
   /// separate settings flag: once the PIN is changed, this check naturally
   /// stops matching.
-  Future<bool> isDefaultManagerPinInUse() async {
+  Future<AppUser?> findManagerWithDefaultPin() async {
     final db = await _helper.database;
     final rows = await db.query(
       'users',
@@ -60,10 +61,10 @@ class UserRepository {
 
     for (final row in rows) {
       if (PinHasher.verify(defaultManagerPin, row['pin_hash'] as String)) {
-        return true;
+        return AppUser.fromMap(row);
       }
     }
-    return false;
+    return null;
   }
 
   /// Inserts the default Manager account. Called once from

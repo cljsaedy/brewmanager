@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'database/database_helper.dart';
+import 'database/user_repository.dart';
+import 'screens/change_pin_screen.dart';
+import 'screens/pin_entry_screen.dart';
 
 Future<void> main() async {
   // Flutter normally connects to the Android system inside runApp().
@@ -21,12 +24,24 @@ Future<void> main() async {
   // so every screen can assume it is ready.
   await DatabaseHelper.instance.database;
 
-  runApp(const BrewManagerApp());
+  // First-launch check: if the seeded Manager still has the default PIN,
+  // the only thing the app will show is the change-PIN screen.
+  final managerNeedingNewPin =
+      await UserRepository().findManagerWithDefaultPin();
+
+  final Widget startScreen = managerNeedingNewPin != null
+      ? ChangePinScreen(user: managerNeedingNewPin)
+      : const PinEntryScreen();
+
+  runApp(BrewManagerApp(home: startScreen));
 }
 
 /// The root widget of the app. Everything else is a descendant of this.
 class BrewManagerApp extends StatelessWidget {
-  const BrewManagerApp({super.key});
+  const BrewManagerApp({super.key, required this.home});
+
+  /// The first screen shown, decided in main() before the app starts.
+  final Widget home;
 
   @override
   Widget build(BuildContext context) {
@@ -37,24 +52,7 @@ class BrewManagerApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.brown),
         useMaterial3: true,
       ),
-      // Temporary placeholder. Replaced by the PIN entry screen in a later step.
-      home: const _PlaceholderScreen(),
-    );
-  }
-}
-
-class _PlaceholderScreen extends StatelessWidget {
-  const _PlaceholderScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text(
-          'BrewManager',
-          style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-        ),
-      ),
+      home: home,
     );
   }
 }
