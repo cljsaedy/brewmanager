@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/app_user.dart';
 import '../session/session.dart';
 import 'ingredients_screen.dart';
+import 'menu_items_screen.dart';
 
 /// manager landing, a grid of cards to each manager feature, cards get added as features are built
 class ManagerHomeScreen extends StatelessWidget {
@@ -35,6 +36,13 @@ class ManagerHomeScreen extends StatelessWidget {
               label: 'Ingredients',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const IngredientsScreen()),
+              ),
+            ),
+            _NavCard(
+              icon: Icons.local_cafe_outlined,
+              label: 'Menu Items',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const MenuItemsScreen()),
               ),
             ),
           ],
