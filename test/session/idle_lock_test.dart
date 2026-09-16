@@ -13,7 +13,7 @@ void main() {
     isActive: true,
   );
 
-  // Mirrors the wiring in main.dart: navigatorKey + IdleLock via builder.
+  // same wiring as main.dart, navigatorKey + IdleLock via builder
   Widget buildApp() {
     return MaterialApp(
       navigatorKey: Session.navigatorKey,
@@ -30,7 +30,7 @@ void main() {
     await tester.pumpWidget(buildApp());
     expect(find.text('HOME'), findsOneWidget);
 
-    // Fake clock: advance past the timeout without really waiting.
+    // fake clock, jump past the timeout without really waiting
     await tester.pump(IdleLock.timeout + const Duration(seconds: 1));
     await tester.pumpAndSettle();
 
@@ -42,8 +42,7 @@ void main() {
     Session.currentUser = fakeUser;
     await tester.pumpWidget(buildApp());
 
-    // Wait most of the timeout, touch, then wait most of it again.
-    // Total elapsed exceeds the timeout but no single gap does.
+    // wait most of the timeout, touch, wait most again, total is over the timeout but no single gap is
     final mostOfIt = IdleLock.timeout - const Duration(seconds: 10);
     await tester.pump(mostOfIt);
     await tester.tap(find.text('HOME'));

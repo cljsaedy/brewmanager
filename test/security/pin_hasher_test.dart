@@ -24,7 +24,7 @@ void main() {
       final first = PinHasher.hash('1234');
       final second = PinHasher.hash('1234');
       expect(first, isNot(equals(second)));
-      // ...but both still verify.
+      // but both still verify
       expect(PinHasher.verify('1234', first), isTrue);
       expect(PinHasher.verify('1234', second), isTrue);
     });

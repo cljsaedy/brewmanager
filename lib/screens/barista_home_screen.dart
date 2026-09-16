@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/app_user.dart';
 import '../session/session.dart';
 
-/// Placeholder. Increment 3 replaces this with the POS grid.
+/// placeholder, increment 3 replaces this with the pos grid
 class BaristaHomeScreen extends StatelessWidget {
   const BaristaHomeScreen({super.key, required this.user});
 

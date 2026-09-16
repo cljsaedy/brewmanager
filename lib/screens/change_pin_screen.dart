@@ -5,11 +5,7 @@ import '../models/app_user.dart';
 import '../widgets/pin_keypad.dart';
 import 'pin_entry_screen.dart';
 
-/// Forces [user] to pick a new PIN. Shown on first launch, before anything
-/// else is reachable, because the seeded Manager PIN is public knowledge.
-///
-/// Two phases: enter a new PIN, then enter it again to confirm. The default
-/// PIN is rejected so the "change" cannot be a no-op.
+/// forces the user to pick a new pin, shown on first launch since the seeded pin is public knowledge
 class ChangePinScreen extends StatefulWidget {
   const ChangePinScreen({super.key, required this.user});
 
@@ -19,10 +15,11 @@ class ChangePinScreen extends StatefulWidget {
   State<ChangePinScreen> createState() => _ChangePinScreenState();
 }
 
+// two phases, enter new pin then enter it again to confirm
 class _ChangePinScreenState extends State<ChangePinScreen> {
   final _users = UserRepository();
 
-  /// The PIN from phase one. Null means we are still in phase one.
+  /// pin from phase one, null means still in phase one
   String? _firstEntry;
   String? _error;
 
@@ -30,6 +27,7 @@ class _ChangePinScreenState extends State<ChangePinScreen> {
 
   Future<void> _onPinEntered(String pin) async {
     if (!_isConfirming) {
+      // reject the default so the "change" can't be a no-op
       if (pin == UserRepository.defaultManagerPin) {
         setState(() => _error = 'Please choose a PIN other than the default');
         return;
@@ -41,8 +39,8 @@ class _ChangePinScreenState extends State<ChangePinScreen> {
       return;
     }
 
+    // mismatch, start over from phase one
     if (pin != _firstEntry) {
-      // Mismatch: start over from phase one.
       setState(() {
         _firstEntry = null;
         _error = 'PINs did not match — try again';

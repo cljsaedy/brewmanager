@@ -3,31 +3,22 @@ import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 
-/// Hashes and verifies user PINs.
-///
-/// PINs are never stored. What goes in the database is `salt$hash`, where:
-///   - `salt` is a random string generated for that user, and
-///   - `hash` is SHA-256 of (salt + pin).
-///
-/// The salt means two users with the same PIN get different stored values,
-/// and an attacker with the database file cannot use one precomputed table
-/// of hashes against every user.
-///
-/// This class is pure Dart with no database access, so it is unit-tested
-/// in isolation.
+/// hashes and checks pins, pure dart so it's unit tested on its own
 class PinHasher {
   PinHasher._();
 
+  // stored value looks like salt$hash, salt is random per user and hash is sha256 of salt+pin
+  // salt means same pin gives different hashes so one precomputed table can't crack every user
   static const String _separator = r'$';
   static const int _saltBytes = 16;
 
-  /// Returns the value to store in `users.pin_hash` for [pin].
+  /// returns the value to store in users.pin_hash, never the pin itself
   static String hash(String pin) {
     final salt = _generateSalt();
     return '$salt$_separator${_digest(salt, pin)}';
   }
 
-  /// Checks whether [pin] matches a value previously produced by [hash].
+  /// checks if pin matches a value made by hash()
   static bool verify(String pin, String stored) {
     final parts = stored.split(_separator);
     if (parts.length != 2) return false;
@@ -42,8 +33,7 @@ class PinHasher {
     return sha256.convert(bytes).toString();
   }
 
-  /// Random.secure() uses the operating system's cryptographic random
-  /// source, unlike plain Random() which is predictable.
+  // Random.secure() uses the os crypto source, plain Random() is predictable
   static String _generateSalt() {
     final random = Random.secure();
     final bytes = List<int>.generate(_saltBytes, (_) => random.nextInt(256));

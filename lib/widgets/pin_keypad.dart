@@ -1,11 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// A 4-digit numeric keypad with dot indicators.
-///
-/// Used by both the PIN entry screen and the change-PIN screen. It is a
-/// StatefulWidget because it must remember the digits typed so far between
-/// taps. When the fourth digit is entered, [onCompleted] fires with the PIN
-/// and the keypad clears itself.
+/// 4 digit keypad with dots, shared by the pin entry and change pin screens
 class PinKeypad extends StatefulWidget {
   const PinKeypad({
     super.key,
@@ -13,10 +8,10 @@ class PinKeypad extends StatefulWidget {
     this.errorMessage,
   });
 
-  /// Called once four digits have been entered.
+  /// called once 4 digits are in
   final void Function(String pin) onCompleted;
 
-  /// Shown in red under the dots when non-null (e.g. "Incorrect PIN").
+  /// shown in red under the dots when not null (e.g. "Incorrect PIN")
   final String? errorMessage;
 
   static const int pinLength = 4;
@@ -25,6 +20,7 @@ class PinKeypad extends StatefulWidget {
   State<PinKeypad> createState() => _PinKeypadState();
 }
 
+// stateful since it has to remember the digits typed so far between taps
 class _PinKeypadState extends State<PinKeypad> {
   String _entered = '';
 
@@ -35,8 +31,7 @@ class _PinKeypadState extends State<PinKeypad> {
 
     if (_entered.length == PinKeypad.pinLength) {
       final pin = _entered;
-      // Clear before reporting, so the dots are empty by the time the
-      // parent screen reacts (e.g. shows an error or navigates away).
+      // clear first so the dots are empty by the time the parent shows an error or navigates
       setState(() => _entered = '');
       widget.onCompleted(pin);
     }
@@ -54,8 +49,7 @@ class _PinKeypadState extends State<PinKeypad> {
       children: [
         _buildDots(context),
         const SizedBox(height: 8),
-        // Reserve the line even when there is no error, so the keypad
-        // does not jump down when a message appears.
+        // reserve the line even with no error so the keypad doesn't jump when one appears
         SizedBox(
           height: 24,
           child: Text(
@@ -90,8 +84,7 @@ class _PinKeypadState extends State<PinKeypad> {
   }
 
   Widget _buildKeys() {
-    // Laid out like a phone keypad: 1-9 in three rows, then 0 with a
-    // backspace to its right.
+    // phone keypad layout, 1-9 then 0 with backspace on the right
     const rows = [
       ['1', '2', '3'],
       ['4', '5', '6'],

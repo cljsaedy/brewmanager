@@ -4,18 +4,13 @@ import 'package:flutter/material.dart';
 
 import 'session.dart';
 
-/// Locks the app after a period with no touches.
-///
-/// Wraps every screen (via MaterialApp.builder). A [Listener] sees each
-/// pointer-down before the widgets underneath do, without consuming it, and
-/// restarts the countdown. When the countdown fires and someone is logged
-/// in, the session is ended and the PIN screen is shown.
+/// locks the app after a while with no touches, wraps every screen via MaterialApp.builder
 class IdleLock extends StatefulWidget {
   const IdleLock({super.key, required this.child});
 
   final Widget child;
 
-  /// How long the tablet can sit untouched before locking.
+  /// how long the tablet can sit untouched before locking
   static const Duration timeout = Duration(minutes: 2);
 
   @override
@@ -43,20 +38,18 @@ class _IdleLockState extends State<IdleLock> {
   }
 
   void _onIdle() {
-    // Nothing to protect if no one is logged in (already on the PIN screen
-    // or the first-launch change-PIN screen).
+    // nothing to protect if no one is logged in (already on pin or change pin screen)
     if (Session.isLoggedIn) {
       Session.logOut();
     }
-    // Keep counting so a later login is also protected.
+    // keep counting so a later login is also protected
     _restartTimer();
   }
 
   @override
   Widget build(BuildContext context) {
+    // Listener sees every touch before the widget underneath does, translucent means the touch still reaches the button
     return Listener(
-      // Translucent: we get notified of the touch AND it still reaches the
-      // button underneath.
       behavior: HitTestBehavior.translucent,
       onPointerDown: (_) => _restartTimer(),
       child: widget.child,

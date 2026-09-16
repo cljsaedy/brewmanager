@@ -7,11 +7,7 @@ import '../widgets/pin_keypad.dart';
 import 'barista_home_screen.dart';
 import 'manager_home_screen.dart';
 
-/// The lock screen. Every session starts here.
-///
-/// On four digits it looks the PIN up, and if a user matches, replaces itself
-/// with the home screen for that user's role. There is no username field:
-/// the PIN alone identifies the person.
+/// lock screen, every session starts here, no username since the pin alone identifies the person
 class PinEntryScreen extends StatefulWidget {
   const PinEntryScreen({super.key});
 
@@ -25,7 +21,7 @@ class _PinEntryScreenState extends State<PinEntryScreen> {
   bool _checking = false;
 
   Future<void> _onPinEntered(String pin) async {
-    // Ignore taps while a lookup is already running.
+    // ignore taps while a lookup is already running
     if (_checking) return;
     setState(() {
       _checking = true;
@@ -34,8 +30,7 @@ class _PinEntryScreenState extends State<PinEntryScreen> {
 
     final user = await _users.findByPin(pin);
 
-    // The screen may have been disposed while we were waiting on the
-    // database. Touching it after that is an error.
+    // screen might be gone by the time the db answers, touching it after that crashes
     if (!mounted) return;
 
     if (user == null) {
@@ -49,8 +44,7 @@ class _PinEntryScreenState extends State<PinEntryScreen> {
     _goToHome(user);
   }
 
-  /// Role detection and routing. pushReplacement removes this screen from
-  /// the navigation stack so Back cannot return to it.
+  /// role detection and routing
   void _goToHome(AppUser user) {
     Session.currentUser = user;
 
@@ -58,6 +52,7 @@ class _PinEntryScreenState extends State<PinEntryScreen> {
         ? ManagerHomeScreen(user: user)
         : BaristaHomeScreen(user: user);
 
+    // pushReplacement removes this screen from the stack so back can't return to it
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => home),
     );
@@ -68,7 +63,7 @@ class _PinEntryScreenState extends State<PinEntryScreen> {
     return Scaffold(
       body: Row(
         children: [
-          // Left half: branding and prompt.
+          // left half, branding and prompt
           Expanded(
             child: Center(
               child: Column(
@@ -90,7 +85,7 @@ class _PinEntryScreenState extends State<PinEntryScreen> {
               ),
             ),
           ),
-          // Right half: keypad.
+          // right half, keypad
           Expanded(
             child: Center(
               child: PinKeypad(

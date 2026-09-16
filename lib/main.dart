@@ -9,25 +9,19 @@ import 'session/idle_lock.dart';
 import 'session/session.dart';
 
 Future<void> main() async {
-  // Flutter normally connects to the Android system inside runApp().
-  // Because we need to talk to Android *before* that (to lock orientation),
-  // we have to set up that connection explicitly first.
+  // to setup connection from flutter to android before runApp()
   WidgetsFlutterBinding.ensureInitialized();
 
-  // BrewManager runs on a tablet in landscape only. Listing only the two
-  // landscape orientations means Android will never rotate the app to
-  // portrait, no matter how the tablet is tilted.
+  // set landscape orientation since the app is landscape only
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
   ]);
 
-  // Open (and on first launch, create) the database before the UI appears,
-  // so every screen can assume it is ready.
+  // open db now (creates it on first launch) so screens can assume it's ready
   await DatabaseHelper.instance.database;
 
-  // First-launch check: if the seeded Manager still has the default PIN,
-  // the only thing the app will show is the change-PIN screen.
+  // first launch check, if manager still has default pin force the change screen
   final managerNeedingNewPin =
       await UserRepository().findManagerWithDefaultPin();
 
@@ -38,11 +32,11 @@ Future<void> main() async {
   runApp(BrewManagerApp(home: startScreen));
 }
 
-/// The root widget of the app. Everything else is a descendant of this.
+/// root widget, everything else is under this
 class BrewManagerApp extends StatelessWidget {
   const BrewManagerApp({super.key, required this.home});
 
-  /// The first screen shown, decided in main() before the app starts.
+  /// first screen to show, decided in main() before the app starts
   final Widget home;
 
   @override
@@ -50,14 +44,13 @@ class BrewManagerApp extends StatelessWidget {
     return MaterialApp(
       title: 'BrewManager',
       debugShowCheckedModeBanner: false,
-      // Lets Session.logOut() navigate without a BuildContext.
+      // so Session.logOut() can navigate without a BuildContext
       navigatorKey: Session.navigatorKey,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.brown),
         useMaterial3: true,
       ),
-      // builder wraps every screen the app ever shows, so the idle timer
-      // sees touches on all of them.
+      // builder wraps every screen so the idle timer sees all touches
       builder: (context, child) => IdleLock(child: child!),
       home: home,
     );

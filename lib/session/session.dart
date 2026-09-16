@@ -3,30 +3,23 @@ import 'package:flutter/material.dart';
 import '../models/app_user.dart';
 import '../screens/pin_entry_screen.dart';
 
-/// Who is currently logged in, app-wide.
-///
-/// Set by the PIN screen on a successful login, cleared by [logOut]. Later
-/// increments read [currentUser] to stamp shifts and transactions with the
-/// user who performed them.
+/// who is logged in app wide, set by the pin screen on login and cleared by logOut()
 class Session {
   Session._();
 
-  /// Lets code with no BuildContext (the idle timer) reach the navigator.
-  /// Passed to MaterialApp in main.dart.
+  /// lets code with no BuildContext (the idle timer) reach the navigator, passed to MaterialApp in main.dart
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
 
+  // later increments read this to stamp shifts and sales with who did them
   static AppUser? currentUser;
 
   static bool get isLoggedIn => currentUser != null;
 
-  /// Clears the session and returns to the PIN screen.
-  ///
-  /// pushAndRemoveUntil puts the PIN screen up and discards every screen
-  /// beneath it, so Back cannot reach anything that needed a login. Used by
-  /// both the Log Out buttons and the idle lock so both take the same path.
+  /// clears the session and goes back to the pin screen, used by both log out buttons and the idle lock
   static void logOut() {
     currentUser = null;
+    // pushAndRemoveUntil drops every screen underneath so back can't reach anything that needed a login
     navigatorKey.currentState?.pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const PinEntryScreen()),
       (_) => false,

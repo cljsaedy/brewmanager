@@ -3,25 +3,20 @@ import 'package:sqflite/sqflite.dart';
 
 import 'user_repository.dart';
 
-/// Single point of access to the on-device SQLite database.
-///
-/// This is a singleton: the whole app shares one open connection through
-/// [DatabaseHelper.instance]. The file is opened lazily the first time
-/// [database] is read and cached after that.
+/// single access point to the sqlite db, whole app shares one connection
 class DatabaseHelper {
   DatabaseHelper._();
   static final DatabaseHelper instance = DatabaseHelper._();
 
   static const String _fileName = 'brewmanager.db';
 
-  /// Bump this whenever the schema changes after the app is installed.
-  /// sqflite will then call [_onUpgrade] instead of [_onCreate].
+  /// bump this when the schema changes after install, sqflite then runs _onUpgrade
   static const int _version = 1;
 
   Database? _db;
 
   Future<Database> get database async {
-    // Reuse the open connection if we already have one.
+    // reuse the open connection if there is one
     if (_db != null) return _db!;
     _db = await _open();
     return _db!;
@@ -40,42 +35,30 @@ class DatabaseHelper {
     );
   }
 
-  /// Runs on every open, before anything else.
-  ///
-  /// SQLite ignores FOREIGN KEY clauses unless this pragma is turned on for
-  /// the connection. Without it, e.g. a batch_deductions row could point at a
-  /// transaction that does not exist.
+  /// runs on every open, sqlite ignores FOREIGN KEY unless this is on
   Future<void> _onConfigure(Database db) async {
     await db.execute('PRAGMA foreign_keys = ON');
   }
 
-  /// Runs once, the first time the database file is created.
-  ///
-  /// All twelve tables are created inside one transaction so that a failure
-  /// partway through leaves no half-built database on disk.
+  /// runs once when the db file is first created, makes all 12 tables
   Future<void> _onCreate(Database db, int version) async {
+    // one transaction so a failure halfway doesn't leave a half built db
     await db.transaction((txn) async {
       for (final statement in _createStatements) {
         await txn.execute(statement);
       }
-      // Seed the one account that exists at install time. Its PIN must be
-      // changed on first launch before anything else is accessible.
+      // seed the only account that exists at install, pin must be changed on first launch
       await UserRepository.seedDefaultManager(txn);
     });
   }
 
-  /// Runs when [_version] is raised on an already-installed app.
-  /// Nothing to migrate yet.
+  /// runs when _version goes up on an installed app, nothing to migrate yet
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {}
 
-  // ---------------------------------------------------------------------------
-  // Schema
-  //
-  // Table and column names match CLAUDE.md exactly. Conventions:
-  //   - booleans are INTEGER 0/1 (SQLite has no boolean type)
-  //   - dates and times are ISO-8601 TEXT, e.g. 2026-09-12T14:30:00
-  //   - quantities are REAL (millilitres, grams, etc.)
-  // ---------------------------------------------------------------------------
+  // schema, names match CLAUDE.md exactly
+  // booleans are INTEGER 0/1 since sqlite has no bool
+  // dates are ISO-8601 TEXT like 2026-09-12T14:30:00 so they sort right
+  // quantities are REAL (ml, grams, etc)
 
   static const List<String> _createStatements = [
     _createUsers,
@@ -92,7 +75,7 @@ class DatabaseHelper {
     _createSuggestionLogs,
   ];
 
-  // PINs are stored as a hash, never as plain text.
+  // pin_hash is a salted hash, never the plain pin
   static const String _createUsers = '''
     CREATE TABLE users (
       user_id    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,8 +86,7 @@ class DatabaseHelper {
     )
   ''';
 
-  // A cafe with rotating shifts reconciles more than once per day, so
-  // reconciliation is tied to a session rather than a calendar date.
+  // shifts instead of dates since a cafe can reconcile more than once a day
   static const String _createShiftSessions = '''
     CREATE TABLE shift_sessions (
       shift_id   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -115,7 +97,7 @@ class DatabaseHelper {
     )
   ''';
 
-  // Deliberately has NO quantity column. Stock lives in inventory_batches.
+  // no quantity column on purpose, stock lives in inventory_batches
   static const String _createIngredients = '''
     CREATE TABLE ingredients (
       ingredient_id    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -125,8 +107,7 @@ class DatabaseHelper {
     )
   ''';
 
-  // A batch = one expiry date + one container size. This is what FEFO
-  // deducts from.
+  // a batch = one expiry date + one container size, this is what FEFO deducts from
   static const String _createInventoryBatches = '''
     CREATE TABLE inventory_batches (
       batch_id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -148,9 +129,7 @@ class DatabaseHelper {
     )
   ''';
 
-  // UNIQUE(menu_item_id, ingredient_id) stops a double-tap from adding the
-  // same ingredient to a recipe twice, which would deduct it twice on every
-  // sale forever.
+  // UNIQUE stops a double tap adding the same ingredient twice (would deduct twice forever)
   static const String _createRecipeBlueprints = '''
     CREATE TABLE recipe_blueprints (
       blueprint_id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -161,7 +140,7 @@ class DatabaseHelper {
     )
   ''';
 
-  // Voids are marked with is_voided, never deleted.
+  // voids are marked with is_voided, never deleted
   static const String _createTransactions = '''
     CREATE TABLE transactions (
       transaction_id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -173,8 +152,7 @@ class DatabaseHelper {
     )
   ''';
 
-  // unit_price_at_sale is a snapshot. Historical reports must read this,
-  // never the current price in menu_items.
+  // unit_price_at_sale is a snapshot, reports read this not menu_items so price edits don't rewrite history
   static const String _createTransactionItems = '''
     CREATE TABLE transaction_items (
       transaction_item_id  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -186,9 +164,7 @@ class DatabaseHelper {
     )
   ''';
 
-  // One row per (transaction, batch) pair. A sale that draws from two
-  // batches writes two rows. This is what lets a void return each amount
-  // to the exact batch it came from.
+  // one row per (transaction, batch), a sale from 2 batches = 2 rows, this is what lets void put stock back in the exact batch
   static const String _createBatchDeductions = '''
     CREATE TABLE batch_deductions (
       deduction_id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -212,8 +188,7 @@ class DatabaseHelper {
     )
   ''';
 
-  // Declared losses (e.g. a dropped bottle) are kept apart from unexplained
-  // variance so the loss chart can tell known incidents from mystery drift.
+  // declared losses (dropped bottle) kept apart from unexplained variance so the chart can tell them apart
   static const String _createLossEvents = '''
     CREATE TABLE loss_events (
       loss_event_id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -225,8 +200,7 @@ class DatabaseHelper {
     )
   ''';
 
-  // Every suggestion is logged so the decision support module can be
-  // evaluated: did the suggested item actually sell?
+  // every suggestion is logged so we can check later if the suggested item actually sold
   static const String _createSuggestionLogs = '''
     CREATE TABLE suggestion_logs (
       suggestion_id      INTEGER PRIMARY KEY AUTOINCREMENT,
