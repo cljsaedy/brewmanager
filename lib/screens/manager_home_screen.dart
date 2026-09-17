@@ -4,6 +4,7 @@ import '../models/app_user.dart';
 import '../session/session.dart';
 import 'ingredients_screen.dart';
 import 'menu_items_screen.dart';
+import 'receiving_screen.dart';
 
 /// manager landing, a grid of cards to each manager feature, cards get added as features are built
 class ManagerHomeScreen extends StatelessWidget {
@@ -43,6 +44,13 @@ class ManagerHomeScreen extends StatelessWidget {
               label: 'Menu Items',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const MenuItemsScreen()),
+              ),
+            ),
+            _NavCard(
+              icon: Icons.move_to_inbox_outlined,
+              label: 'Receive Stock',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ReceivingScreen()),
               ),
             ),
           ],
