@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../database/ingredient_repository.dart' show DuplicateNameException;
 import '../database/menu_item_repository.dart';
 import '../models/menu_item.dart';
+import 'recipe_screen.dart';
 
 /// manager screen to add, edit and archive menu items
 class MenuItemsScreen extends StatefulWidget {
@@ -122,10 +123,25 @@ class _MenuItemsScreenState extends State<MenuItemsScreen> {
                       subtitle:
                           Text('₱${item.sellingPrice.toStringAsFixed(2)}'),
                       onTap: () => _edit(item),
-                      trailing: IconButton(
-                        tooltip: 'Archive',
-                        icon: const Icon(Icons.archive_outlined),
-                        onPressed: () => _archive(item),
+                      // Row since trailing only takes one widget
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextButton.icon(
+                            icon: const Icon(Icons.receipt_long_outlined),
+                            label: const Text('Recipe'),
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => RecipeScreen(menuItem: item),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Archive',
+                            icon: const Icon(Icons.archive_outlined),
+                            onPressed: () => _archive(item),
+                          ),
+                        ],
                       ),
                     );
                   },
