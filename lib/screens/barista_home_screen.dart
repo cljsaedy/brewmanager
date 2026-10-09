@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/app_user.dart';
 import '../session/session.dart';
+import 'declare_loss_screen.dart';
 import 'pos_screen.dart';
 
 /// barista landing, the till is the main thing they do so it's one tap away
@@ -24,12 +25,26 @@ class BaristaHomeScreen extends StatelessWidget {
         ],
       ),
       body: Center(
-        child: FilledButton.icon(
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const PosScreen()),
-          ),
-          icon: const Icon(Icons.point_of_sale),
-          label: const Text('Open Point of Sale'),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            FilledButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const PosScreen()),
+              ),
+              icon: const Icon(Icons.point_of_sale),
+              label: const Text('Open Point of Sale'),
+            ),
+            const SizedBox(height: 16),
+            // baristas are the ones who drop things, so they can record it themselves
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const DeclareLossScreen()),
+              ),
+              icon: const Icon(Icons.report_gmailerrorred_outlined),
+              label: const Text('Declare Container Lost'),
+            ),
+          ],
         ),
       ),
     );

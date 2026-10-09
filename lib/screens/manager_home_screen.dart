@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/app_user.dart';
 import '../session/session.dart';
 import 'ingredients_screen.dart';
+import 'declare_loss_screen.dart';
 import 'menu_items_screen.dart';
 import 'pos_screen.dart';
 import 'receiving_screen.dart';
@@ -59,6 +60,13 @@ class ManagerHomeScreen extends StatelessWidget {
               label: 'Point of Sale',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const PosScreen()),
+              ),
+            ),
+            _NavCard(
+              icon: Icons.report_gmailerrorred_outlined,
+              label: 'Declare Loss',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const DeclareLossScreen()),
               ),
             ),
           ],

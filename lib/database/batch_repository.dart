@@ -10,6 +10,19 @@ class BatchRepository {
 
   final DatabaseHelper _helper;
 
+  /// batches that still have stock, with ingredient name, soonest expiry first
+  Future<List<BatchWithIngredient>> getAllWithIngredient() async {
+    final db = await _helper.database;
+    final rows = await db.rawQuery('''
+      SELECT b.*, i.name AS ingredient_name, i.unit_of_measure
+      FROM inventory_batches b
+      JOIN ingredients i ON i.ingredient_id = b.ingredient_id
+      WHERE b.quantity_remaining > 0
+      ORDER BY b.expiry_date, i.name COLLATE NOCASE
+    ''');
+    return rows.map(BatchWithIngredient.fromMap).toList();
+  }
+
   /// saves a whole delivery at once, merging into an existing batch when one matches
   Future<void> insertAll(List<NewBatch> batches) async {
     final db = await _helper.database;

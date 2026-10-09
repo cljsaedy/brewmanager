@@ -31,6 +31,31 @@ class InventoryBatch {
   }
 }
 
+/// a batch plus its ingredient's name and unit, for screens that list batches
+class BatchWithIngredient {
+  final InventoryBatch batch;
+  final String ingredientName;
+  final String unitOfMeasure;
+
+  const BatchWithIngredient({
+    required this.batch,
+    required this.ingredientName,
+    required this.unitOfMeasure,
+  });
+
+  factory BatchWithIngredient.fromMap(Map<String, Object?> map) {
+    return BatchWithIngredient(
+      batch: InventoryBatch.fromMap(map),
+      ingredientName: map['ingredient_name'] as String,
+      unitOfMeasure: map['unit_of_measure'] as String,
+    );
+  }
+
+  /// whole containers the remaining quantity could still fill, what a loss can be capped at
+  int get wholeContainersLeft =>
+      (batch.quantityRemaining / batch.containerCapacity).ceil();
+}
+
 /// a batch the user has filled in but not saved yet, what the receiving screen collects before Save
 class NewBatch {
   final int ingredientId;
