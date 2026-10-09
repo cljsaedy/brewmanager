@@ -28,6 +28,25 @@ class RecipeRepository {
     return rows.map(RecipeBlueprint.fromMap).toList();
   }
 
+  /// every recipe line grouped by menu item, one query instead of one per item on the pos grid
+  Future<Map<int, List<RecipeBlueprint>>> getAllGroupedByMenuItem() async {
+    final db = await _helper.database;
+    final rows = await db.rawQuery('''
+      SELECT rb.blueprint_id, rb.menu_item_id, rb.ingredient_id,
+             rb.quantity_required,
+             i.name AS ingredient_name, i.unit_of_measure
+      FROM recipe_blueprints rb
+      JOIN ingredients i ON i.ingredient_id = rb.ingredient_id
+    ''');
+
+    final grouped = <int, List<RecipeBlueprint>>{};
+    for (final row in rows) {
+      final line = RecipeBlueprint.fromMap(row);
+      grouped.putIfAbsent(line.menuItemId, () => []).add(line);
+    }
+    return grouped;
+  }
+
   /// returns the new blueprint_id
   Future<int> add(int menuItemId, int ingredientId, double quantity) async {
     final db = await _helper.database;

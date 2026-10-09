@@ -29,10 +29,66 @@ class Availability {
 class AvailabilityCalculator {
   AvailabilityCalculator._();
 
+  /// adds up each ingredient's batches into one number per ingredient
+  static Map<int, double> totalsByIngredient(
+    Map<int, List<BatchStock>> stockByIngredient,
+  ) {
+    return {
+      for (final entry in stockByIngredient.entries)
+        entry.key: entry.value.fold<double>(
+          0,
+          (sum, b) => sum + b.quantityRemaining,
+        ),
+    };
+  }
+
+  /// how much of each ingredient the order already claims
+  ///
+  /// needed because two drinks can share an ingredient, 2 lattes and 2 cappuccinos
+  /// both using milk must not each think the full milk stock is theirs
+  static Map<int, double> consumedByOrder(
+    Map<int, int> quantityByMenuItemId,
+    Map<int, List<RecipeBlueprint>> recipesByMenuItemId,
+  ) {
+    final consumed = <int, double>{};
+    for (final entry in quantityByMenuItemId.entries) {
+      final lines = recipesByMenuItemId[entry.key] ?? const [];
+      for (final line in lines) {
+        consumed[line.ingredientId] = (consumed[line.ingredientId] ?? 0) +
+            line.quantityRequired * entry.value;
+      }
+    }
+    return consumed;
+  }
+
+  /// subtracts what the order claims from the stock totals, never goes below zero
+  static Map<int, double> totalsAfterOrder(
+    Map<int, double> totals,
+    Map<int, double> consumed,
+  ) {
+    final left = <int, double>{...totals};
+    for (final entry in consumed.entries) {
+      final remaining = (left[entry.key] ?? 0) - entry.value;
+      left[entry.key] = remaining < 0 ? 0 : remaining;
+    }
+    return left;
+  }
+
   /// [stockByIngredient] is every batch of every ingredient, keyed by ingredient_id
   static Availability forMenuItem(
     List<RecipeBlueprint> recipeLines,
     Map<int, List<BatchStock>> stockByIngredient,
+  ) {
+    return forMenuItemFromTotals(
+      recipeLines,
+      totalsByIngredient(stockByIngredient),
+    );
+  }
+
+  /// same thing but from already totalled stock, what the pos uses after subtracting the order
+  static Availability forMenuItemFromTotals(
+    List<RecipeBlueprint> recipeLines,
+    Map<int, double> availableByIngredient,
   ) {
     // no recipe means nothing would be deducted on a sale, so treat it as unsellable instead of unlimited
     if (recipeLines.isEmpty) {
@@ -43,11 +99,7 @@ class AvailabilityCalculator {
     String? limiting;
 
     for (final line in recipeLines) {
-      final batches = stockByIngredient[line.ingredientId] ?? const [];
-      final available = batches.fold<double>(
-        0,
-        (sum, b) => sum + b.quantityRemaining,
-      );
+      final available = availableByIngredient[line.ingredientId] ?? 0;
 
       // whole servings only, you can't sell half a drink
       final servings = (available / line.quantityRequired).floor();

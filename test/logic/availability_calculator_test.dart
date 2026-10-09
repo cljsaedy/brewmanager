@@ -91,4 +91,68 @@ void main() {
       expect(result.limitingIngredient, isNull);
     });
   });
+
+  group('order reservation', () {
+    // latte (item 1) and cappuccino (item 2) both use 200ml of milk (ingredient 1)
+    final recipes = {
+      1: [line(1, 'Milk', 200)],
+      2: [line(1, 'Milk', 200)],
+    };
+
+    test('consumedByOrder multiplies recipe by quantity', () {
+      final consumed = AvailabilityCalculator.consumedByOrder(
+        {1: 2},
+        recipes,
+      );
+
+      expect(consumed[1], 400);
+    });
+
+    test('consumedByOrder adds up items sharing an ingredient', () {
+      final consumed = AvailabilityCalculator.consumedByOrder(
+        {1: 2, 2: 1},
+        recipes,
+      );
+
+      // 2 lattes + 1 cappuccino = 600ml of milk
+      expect(consumed[1], 600);
+    });
+
+    test('an order already in progress shrinks what is still available', () {
+      final totals = AvailabilityCalculator.totalsByIngredient({
+        1: [stock(1, 500)]
+      });
+
+      // nothing ordered yet, 2 servings
+      expect(
+        AvailabilityCalculator.forMenuItemFromTotals(recipes[1]!, totals)
+            .servings,
+        2,
+      );
+
+      // after 2 lattes are in the order there is no milk left for a cappuccino
+      final left = AvailabilityCalculator.totalsAfterOrder(
+        totals,
+        AvailabilityCalculator.consumedByOrder({1: 2}, recipes),
+      );
+      final capp =
+          AvailabilityCalculator.forMenuItemFromTotals(recipes[2]!, left);
+
+      expect(capp.servings, 0);
+      expect(capp.limitingIngredient, 'Milk');
+    });
+
+    test('totalsAfterOrder never goes negative', () {
+      final totals = AvailabilityCalculator.totalsByIngredient({
+        1: [stock(1, 100)]
+      });
+
+      final left = AvailabilityCalculator.totalsAfterOrder(
+        totals,
+        AvailabilityCalculator.consumedByOrder({1: 5}, recipes),
+      );
+
+      expect(left[1], 0);
+    });
+  });
 }
