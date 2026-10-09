@@ -6,6 +6,7 @@ import 'declare_loss_screen.dart';
 import 'expiry_matrix_screen.dart';
 import 'pos_screen.dart';
 import 'sales_history_screen.dart';
+import 'shift_screen.dart';
 
 /// barista landing, the till is the main thing they do so it's one tap away
 class BaristaHomeScreen extends StatelessWidget {
@@ -45,6 +46,15 @@ class BaristaHomeScreen extends StatelessWidget {
               ),
               icon: const Icon(Icons.report_gmailerrorred_outlined),
               label: const Text('Declare Container Lost'),
+            ),
+            const SizedBox(height: 16),
+            // baristas open and close their own shifts
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ShiftScreen()),
+              ),
+              icon: const Icon(Icons.schedule),
+              label: const Text('Shifts'),
             ),
             const SizedBox(height: 16),
             // baristas need to see what's expiring to know what to use up

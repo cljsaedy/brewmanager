@@ -9,6 +9,7 @@ import 'menu_items_screen.dart';
 import 'pos_screen.dart';
 import 'receiving_screen.dart';
 import 'sales_history_screen.dart';
+import 'shift_screen.dart';
 
 /// manager landing, a grid of cards to each manager feature, cards get added as features are built
 class ManagerHomeScreen extends StatelessWidget {
@@ -69,6 +70,13 @@ class ManagerHomeScreen extends StatelessWidget {
               label: 'Declare Loss',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const DeclareLossScreen()),
+              ),
+            ),
+            _NavCard(
+              icon: Icons.schedule,
+              label: 'Shifts',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ShiftScreen()),
               ),
             ),
             _NavCard(
