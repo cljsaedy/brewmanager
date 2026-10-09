@@ -9,6 +9,7 @@ import '../models/menu_item.dart';
 import '../models/order_line.dart';
 import '../models/recipe_blueprint.dart';
 import '../session/session.dart';
+import 'receipt_screen.dart';
 
 /// the barista's till, menu grid on the left and the running order on the right
 class PosScreen extends StatefulWidget {
@@ -81,6 +82,9 @@ class _PosScreenState extends State<PosScreen> {
 
     setState(() => _checkingOut = true);
 
+    // keep a copy for the receipt, the running order is cleared right after the sale
+    final soldLines = _order.lines;
+
     try {
       final result = await _checkout.checkout(_order, user.userId);
       if (!mounted) return;
@@ -93,12 +97,14 @@ class _PosScreenState extends State<PosScreen> {
       await _reload();
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Sale #${result.transactionId} recorded · '
-            '${result.itemCount} item${result.itemCount == 1 ? '' : 's'} · '
-            '₱${result.total.toStringAsFixed(2)}',
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ReceiptScreen(
+            transactionId: result.transactionId,
+            lines: soldLines,
+            total: result.total,
+            soldAt: DateTime.now(),
+            cashierName: user.name,
           ),
         ),
       );

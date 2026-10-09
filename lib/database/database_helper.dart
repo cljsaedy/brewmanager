@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
+import 'dev_seed.dart';
 import 'user_repository.dart';
 
 /// single access point to the sqlite db, whole app shares one connection
@@ -49,6 +51,12 @@ class DatabaseHelper {
       }
       // seed the only account that exists at install, pin must be changed on first launch
       await UserRepository.seedDefaultManager(txn);
+
+      // kDebugMode is true for flutter run and false for a release build, so the cafe's
+      // installed app starts empty while development installs get test data
+      if (kDebugMode) {
+        await DevSeed.run(txn);
+      }
     });
   }
 
