@@ -10,14 +10,19 @@ class BatchRepository {
 
   final DatabaseHelper _helper;
 
-  /// batches that still have stock, with ingredient name, soonest expiry first
-  Future<List<BatchWithIngredient>> getAllWithIngredient() async {
+  /// batches with their ingredient name, soonest expiry first
+  ///
+  /// [includeDepleted] brings in batches at zero, the expiry matrix wants them since
+  /// empty containers are still physically on the shelf and get counted at the audit
+  Future<List<BatchWithIngredient>> getAllWithIngredient({
+    bool includeDepleted = false,
+  }) async {
     final db = await _helper.database;
     final rows = await db.rawQuery('''
       SELECT b.*, i.name AS ingredient_name, i.unit_of_measure
       FROM inventory_batches b
       JOIN ingredients i ON i.ingredient_id = b.ingredient_id
-      WHERE b.quantity_remaining > 0
+      ${includeDepleted ? '' : 'WHERE b.quantity_remaining > 0'}
       ORDER BY b.expiry_date, i.name COLLATE NOCASE
     ''');
     return rows.map(BatchWithIngredient.fromMap).toList();

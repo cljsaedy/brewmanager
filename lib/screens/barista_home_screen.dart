@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../models/app_user.dart';
 import '../session/session.dart';
 import 'declare_loss_screen.dart';
+import 'expiry_matrix_screen.dart';
 import 'pos_screen.dart';
+import 'sales_history_screen.dart';
 
 /// barista landing, the till is the main thing they do so it's one tap away
 class BaristaHomeScreen extends StatelessWidget {
@@ -43,6 +45,24 @@ class BaristaHomeScreen extends StatelessWidget {
               ),
               icon: const Icon(Icons.report_gmailerrorred_outlined),
               label: const Text('Declare Container Lost'),
+            ),
+            const SizedBox(height: 16),
+            // baristas need to see what's expiring to know what to use up
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ExpiryMatrixScreen()),
+              ),
+              icon: const Icon(Icons.event_busy_outlined),
+              label: const Text('Stock & Expiry'),
+            ),
+            const SizedBox(height: 16),
+            // baristas can see sales, but voiding one still asks for a manager pin
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SalesHistoryScreen()),
+              ),
+              icon: const Icon(Icons.history),
+              label: const Text('Sales History'),
             ),
           ],
         ),

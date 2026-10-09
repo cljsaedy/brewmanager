@@ -4,9 +4,11 @@ import '../models/app_user.dart';
 import '../session/session.dart';
 import 'ingredients_screen.dart';
 import 'declare_loss_screen.dart';
+import 'expiry_matrix_screen.dart';
 import 'menu_items_screen.dart';
 import 'pos_screen.dart';
 import 'receiving_screen.dart';
+import 'sales_history_screen.dart';
 
 /// manager landing, a grid of cards to each manager feature, cards get added as features are built
 class ManagerHomeScreen extends StatelessWidget {
@@ -67,6 +69,20 @@ class ManagerHomeScreen extends StatelessWidget {
               label: 'Declare Loss',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const DeclareLossScreen()),
+              ),
+            ),
+            _NavCard(
+              icon: Icons.event_busy_outlined,
+              label: 'Stock & Expiry',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ExpiryMatrixScreen()),
+              ),
+            ),
+            _NavCard(
+              icon: Icons.history,
+              label: 'Sales History',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SalesHistoryScreen()),
               ),
             ),
           ],
