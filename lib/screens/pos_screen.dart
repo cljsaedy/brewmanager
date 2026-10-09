@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../database/checkout_service.dart';
 import '../database/menu_item_repository.dart';
 import '../database/recipe_repository.dart';
 import '../database/stock_repository.dart';
@@ -7,6 +8,7 @@ import '../logic/availability_calculator.dart';
 import '../models/menu_item.dart';
 import '../models/order_line.dart';
 import '../models/recipe_blueprint.dart';
+import '../session/session.dart';
 
 /// the barista's till, menu grid on the left and the running order on the right
 class PosScreen extends StatefulWidget {
@@ -20,6 +22,7 @@ class _PosScreenState extends State<PosScreen> {
   final _menuItems = MenuItemRepository();
   final _recipes = RecipeRepository();
   final _stock = StockRepository();
+  final _checkout = CheckoutService();
 
   List<MenuItem> _items = [];
   Map<int, List<RecipeBlueprint>> _recipesByItem = {};
@@ -27,6 +30,7 @@ class _PosScreenState extends State<PosScreen> {
   Map<int, double> _stockTotals = {};
   RunningOrder _order = const RunningOrder();
   bool _loading = true;
+  bool _checkingOut = false;
 
   @override
   void initState() {
@@ -70,6 +74,52 @@ class _PosScreenState extends State<PosScreen> {
       setState(() => _order = _order.removeOne(menuItemId));
 
   void _clear() => setState(() => _order = _order.clear());
+
+  Future<void> _doCheckout() async {
+    final user = Session.currentUser;
+    if (_order.isEmpty || _checkingOut || user == null) return;
+
+    setState(() => _checkingOut = true);
+
+    try {
+      final result = await _checkout.checkout(_order, user.userId);
+      if (!mounted) return;
+
+      setState(() {
+        _order = _order.clear();
+        _checkingOut = false;
+      });
+      // reload so the grid shows the stock that's actually left
+      await _reload();
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Sale #${result.transactionId} recorded · '
+            '${result.itemCount} item${result.itemCount == 1 ? '' : 's'} · '
+            '₱${result.total.toStringAsFixed(2)}',
+          ),
+        ),
+      );
+    } on InsufficientStockException catch (e) {
+      // nothing was written, the transaction rolled back
+      if (!mounted) return;
+      setState(() => _checkingOut = false);
+      await _reload();
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Theme.of(context).colorScheme.error,
+          content: Text(
+            'Sale cancelled — short ${e.shortfall.toStringAsFixed(0)} ${e.unit} '
+            'of ${e.ingredientName}',
+          ),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -118,9 +168,11 @@ class _PosScreenState extends State<PosScreen> {
           Expanded(
             child: _OrderPanel(
               order: _order,
+              checkingOut: _checkingOut,
               onAddOne: _add,
               onRemoveOne: _removeOne,
               onClear: _clear,
+              onCheckout: _doCheckout,
             ),
           ),
         ],
@@ -200,15 +252,19 @@ class _MenuTile extends StatelessWidget {
 class _OrderPanel extends StatelessWidget {
   const _OrderPanel({
     required this.order,
+    required this.checkingOut,
     required this.onAddOne,
     required this.onRemoveOne,
     required this.onClear,
+    required this.onCheckout,
   });
 
   final RunningOrder order;
+  final bool checkingOut;
   final void Function(MenuItem) onAddOne;
   final void Function(int menuItemId) onRemoveOne;
   final VoidCallback onClear;
+  final VoidCallback onCheckout;
 
   @override
   Widget build(BuildContext context) {
@@ -281,10 +337,11 @@ class _OrderPanel extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  // checkout is the next step, disabled for now
-                  onPressed: null,
+                  // disabled while a sale is being written so a second tap can't queue one
+                  onPressed:
+                      order.isEmpty || checkingOut ? null : onCheckout,
                   icon: const Icon(Icons.point_of_sale),
-                  label: const Text('Checkout (next step)'),
+                  label: Text(checkingOut ? 'Recording…' : 'Checkout'),
                 ),
               ),
             ],
