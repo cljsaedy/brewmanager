@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../database/shift_repository.dart';
 import '../models/shift.dart';
 import '../session/session.dart';
+import 'audit_screen.dart';
 
 /// open and close shifts, and see past ones
 class ShiftScreen extends StatefulWidget {
@@ -89,9 +90,9 @@ class _ShiftScreenState extends State<ShiftScreen> {
             if (summary.declaredLossCount > 0)
               Text('${summary.declaredLossCount} declared losses'),
             const SizedBox(height: 12),
-            // the closing stock count gets inserted here in the next step
             const Text(
-              'The closing stock count will be added to this step shortly.',
+              'You will count the closing stock next. The shift closes once '
+              'the count is submitted.',
             ),
           ],
         ),
@@ -102,19 +103,32 @@ class _ShiftScreenState extends State<ShiftScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Close shift'),
+            child: const Text('Count stock'),
           ),
         ],
       ),
     );
     if (confirmed != true) return;
+    if (!mounted) return;
+
+    // the audit comes first, the shift only closes once the count is submitted
+    // a cancelled count leaves the shift open so nothing is half finished
+    final submitted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => AuditScreen(shiftId: shift.shiftId),
+      ),
+    );
+    if (submitted != true) {
+      await _reload();
+      return;
+    }
 
     setState(() => _working = true);
     await _shifts.closeShift(shift.shiftId);
     await _reload();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Shift closed')),
+      const SnackBar(content: Text('Count submitted and shift closed')),
     );
   }
 
