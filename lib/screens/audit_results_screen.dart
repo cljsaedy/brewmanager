@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../logic/rotation_break_detector.dart';
 import '../models/audit_batch.dart';
 
 /// shown after the count is submitted and locked
@@ -24,6 +25,8 @@ class AuditResultsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final withVariance = results.where((r) => !r.isExact).toList();
+    // worked out from this count's variances, nothing extra was stored for it
+    final rotationBreaks = RotationBreakDetector.detect(results);
 
     return Scaffold(
       appBar: AppBar(
@@ -66,11 +69,15 @@ class AuditResultsScreen extends StatelessWidget {
           ),
           const Divider(height: 1),
           Expanded(
-            child: ListView.separated(
-              itemCount: results.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (context, index) =>
-                  _ResultRow(result: results[index]),
+            child: ListView(
+              children: [
+                if (rotationBreaks.isNotEmpty)
+                  _RotationBreakSection(breaks: rotationBreaks),
+                for (final result in results) ...[
+                  _ResultRow(result: result),
+                  const Divider(height: 1),
+                ],
+              ],
             ),
           ),
           const Divider(height: 1),
@@ -89,6 +96,62 @@ class AuditResultsScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+/// probable rotation breaks, shown above the per batch list
+///
+/// informational only, both batches were already corrected by the write-back,
+/// this just explains why the two numbers moved in opposite directions
+class _RotationBreakSection extends StatelessWidget {
+  const _RotationBreakSection({required this.breaks});
+
+  final List<RotationBreak> breaks;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Theme.of(context).colorScheme.tertiaryContainer,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.swap_horiz),
+              const SizedBox(width: 8),
+              Text(
+                breaks.length == 1
+                    ? 'Possible rotation break'
+                    : 'Possible rotation breaks',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (final b in breaks)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                '${b.ingredientName}: batch #${b.deficit.auditBatch.batchId} is '
+                '${_fmt(b.deficit.variance.abs())} ${b.unitOfMeasure} short while '
+                'batch #${b.surplus.auditBatch.batchId} has '
+                '${_fmt(b.surplus.variance.abs())} ${b.unitOfMeasure} spare. '
+                'Nothing appears lost — stock was probably taken from the wrong '
+                'container instead of the one expiring soonest.',
+              ),
+            ),
+          Text(
+            'Both batches have been corrected to the counted amounts. '
+            'This is a note, not a correction.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _fmt(double v) =>
+      v == v.roundToDouble() ? v.toInt().toString() : v.toString();
 }
 
 /// expected vs counted vs difference for one batch

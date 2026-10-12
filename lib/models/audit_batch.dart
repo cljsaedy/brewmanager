@@ -25,6 +25,7 @@ class AuditBatch {
   });
 
   int get batchId => batch.batch.batchId;
+  int get ingredientId => batch.batch.ingredientId;
   double get containerCapacity => batch.batch.containerCapacity;
   String get ingredientName => batch.ingredientName;
   String get unitOfMeasure => batch.unitOfMeasure;
