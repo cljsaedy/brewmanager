@@ -31,12 +31,14 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # Local SQLite database. The entire system runs against one on-device file.
+  # local sqlite, the whole system runs against one on-device file
   sqflite: ^2.4.1
-  # Safe joining of directory + filename when locating the database file.
+  # safe joining of directory + filename when finding the db file
   path: ^1.9.0
-  # SHA-256 for PIN hashing. PINs are never stored in plain text.
+  # sha-256 for pin hashing, pins are never stored as plain text
   crypto: ^3.0.6
+  # the material loss chart
+  fl_chart: ^1.2.0
 
 dev_dependencies:
   flutter_test:

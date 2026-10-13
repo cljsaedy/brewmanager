@@ -5,6 +5,7 @@ import '../session/session.dart';
 import 'ingredients_screen.dart';
 import 'declare_loss_screen.dart';
 import 'expiry_matrix_screen.dart';
+import 'loss_chart_screen.dart';
 import 'menu_items_screen.dart';
 import 'pos_screen.dart';
 import 'receiving_screen.dart';
@@ -84,6 +85,13 @@ class ManagerHomeScreen extends StatelessWidget {
               label: 'Stock & Expiry',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ExpiryMatrixScreen()),
+              ),
+            ),
+            _NavCard(
+              icon: Icons.bar_chart,
+              label: 'Material Loss',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const LossChartScreen()),
               ),
             ),
             _NavCard(
