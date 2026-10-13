@@ -3,12 +3,17 @@ import 'package:flutter/material.dart';
 import '../database/checkout_service.dart';
 import '../database/menu_item_repository.dart';
 import '../database/recipe_repository.dart';
+import '../database/shift_repository.dart';
 import '../database/stock_repository.dart';
+import '../database/suggestion_repository.dart';
 import '../logic/availability_calculator.dart';
+import '../logic/fefo_engine.dart' show BatchStock;
+import '../logic/suggestion_engine.dart';
 import '../models/menu_item.dart';
 import '../models/order_line.dart';
 import '../models/recipe_blueprint.dart';
 import '../session/session.dart';
+import '../widgets/suggestion_banner.dart';
 import 'receipt_screen.dart';
 
 /// the barista's till, menu grid on the left and the running order on the right
@@ -24,6 +29,8 @@ class _PosScreenState extends State<PosScreen> {
   final _recipes = RecipeRepository();
   final _stock = StockRepository();
   final _checkout = CheckoutService();
+  final _suggestions = SuggestionRepository();
+  final _shifts = ShiftRepository();
 
   List<MenuItem> _items = [];
   Map<int, List<RecipeBlueprint>> _recipesByItem = {};
@@ -32,6 +39,11 @@ class _PosScreenState extends State<PosScreen> {
   RunningOrder _order = const RunningOrder();
   bool _loading = true;
   bool _checkingOut = false;
+
+  Suggestion? _suggestion;
+  bool _isColdStart = false;
+  // the suggestion_logs row for the suggestion on screen, so acceptance can be marked
+  int? _suggestionLogId;
 
   @override
   void initState() {
@@ -50,6 +62,56 @@ class _PosScreenState extends State<PosScreen> {
       _stockTotals = AvailabilityCalculator.totalsByIngredient(stock);
       _loading = false;
     });
+
+    await _refreshSuggestion(stock);
+  }
+
+  /// ranks the menu and logs whatever ends up on the banner
+  ///
+  /// logged once per load rather than on every rebuild, otherwise the log would
+  /// fill up with the same suggestion over and over
+  Future<void> _refreshSuggestion(
+    Map<int, List<BatchStock>> stock,
+  ) async {
+    final user = Session.currentUser;
+    if (user == null) return;
+
+    final candidates = await _suggestions.loadCandidates();
+    final ranking = SuggestionEngine.rank(
+      candidates: candidates,
+      stockByIngredient: stock,
+      today: DateTime.now(),
+    );
+
+    final top = ranking.top;
+    if (top == null) {
+      if (!mounted) return;
+      setState(() {
+        _suggestion = null;
+        _suggestionLogId = null;
+      });
+      return;
+    }
+
+    final shiftId = await _shifts.getOrCreateOpenShift(user.userId);
+    final logId = await _suggestions.logSuggestion(
+      shiftId: shiftId,
+      suggestion: top,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _suggestion = top;
+      _isColdStart = ranking.isColdStart;
+      _suggestionLogId = logId;
+    });
+  }
+
+  /// the banner's add button, _add does the acceptance marking
+  void _acceptSuggestion() {
+    final suggestion = _suggestion;
+    if (suggestion == null) return;
+    _add(suggestion.menuItem);
   }
 
   /// stock left once the current order's claims are taken out, this is what the grid checks
@@ -69,7 +131,17 @@ class _PosScreenState extends State<PosScreen> {
     );
   }
 
-  void _add(MenuItem item) => setState(() => _order = _order.add(item));
+  Future<void> _add(MenuItem item) async {
+    setState(() => _order = _order.add(item));
+
+    // adding the suggested item counts as accepting it however it was tapped,
+    // from the banner or straight off the grid, what matters is that it sold
+    final logId = _suggestionLogId;
+    if (logId != null && item.menuItemId == _suggestion?.menuItem.menuItemId) {
+      _suggestionLogId = null; // only mark it once
+      await _suggestions.markAccepted(logId);
+    }
+  }
 
   void _removeOne(int menuItemId) =>
       setState(() => _order = _order.removeOne(menuItemId));
@@ -148,26 +220,39 @@ class _PosScreenState extends State<PosScreen> {
       ),
       body: Row(
         children: [
-          // left, the menu grid
+          // left, the suggestion strip above the menu grid
           Expanded(
             flex: 2,
-            child: _items.isEmpty
-                ? const Center(child: Text('No menu items yet'))
-                : GridView.count(
-                    padding: const EdgeInsets.all(16),
-                    crossAxisCount: 4,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: 1.1,
-                    children: [
-                      for (final item in _items)
-                        _MenuTile(
-                          item: item,
-                          availability: _availabilityOf(item, stockLeft),
-                          onTap: () => _add(item),
-                        ),
-                    ],
+            child: Column(
+              children: [
+                if (_suggestion != null)
+                  SuggestionBanner(
+                    suggestion: _suggestion!,
+                    isColdStart: _isColdStart,
+                    onTap: _acceptSuggestion,
                   ),
+                Expanded(
+                  child: _items.isEmpty
+                      ? const Center(child: Text('No menu items yet'))
+                      : GridView.count(
+                          padding: const EdgeInsets.all(16),
+                          crossAxisCount: 4,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                          childAspectRatio: 1.1,
+                          children: [
+                            for (final item in _items)
+                              _MenuTile(
+                                item: item,
+                                availability:
+                                    _availabilityOf(item, stockLeft),
+                                onTap: () => _add(item),
+                              ),
+                          ],
+                        ),
+                ),
+              ],
+            ),
           ),
           const VerticalDivider(width: 1),
           // right, the running order
