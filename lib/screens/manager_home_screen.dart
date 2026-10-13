@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/app_user.dart';
 import '../session/session.dart';
 import 'ingredients_screen.dart';
+import 'backup_screen.dart';
 import 'declare_loss_screen.dart';
 import 'export_screen.dart';
 import 'expiry_matrix_screen.dart';
@@ -100,6 +101,13 @@ class ManagerHomeScreen extends StatelessWidget {
               label: 'Export Data',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ExportScreen()),
+              ),
+            ),
+            _NavCard(
+              icon: Icons.storage_outlined,
+              label: 'Backup & Restore',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const BackupScreen()),
               ),
             ),
             _NavCard(

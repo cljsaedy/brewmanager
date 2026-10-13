@@ -24,9 +24,23 @@ class DatabaseHelper {
     return _db!;
   }
 
-  Future<Database> _open() async {
+  /// full path of the db file, needed by backup and restore
+  Future<String> databaseFilePath() async {
     final dir = await getDatabasesPath();
-    final path = p.join(dir, _fileName);
+    return p.join(dir, _fileName);
+  }
+
+  /// closes the connection so the file can be copied or replaced safely
+  ///
+  /// sqlite can be caught mid write if the file is copied while open, so backup and
+  /// restore both close first, the next read of [database] reopens it
+  Future<void> close() async {
+    await _db?.close();
+    _db = null;
+  }
+
+  Future<Database> _open() async {
+    final path = await databaseFilePath();
 
     return openDatabase(
       path,
