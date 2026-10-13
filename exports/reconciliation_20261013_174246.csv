@@ -1,0 +1,8 @@
+﻿Shift,Shift Closed,Batch,Ingredient,Unit,Expiry Date,Theoretical Quantity,Audited Quantity,Variance,Variance Type
+1,2026-10-04T01:23:59.521840,6,Espresso Beans,g,2026-10-04,2000.0,1750.0,-250.0,unexplained
+2,2026-10-09T01:23:59.521840,7,Chocolate Syrup,ml,2026-10-03,1200.0,1350.0,150.0,unexplained
+2,2026-10-09T01:23:59.521840,6,Espresso Beans,g,2026-10-04,1750.0,1600.0,-150.0,unexplained
+2,2026-10-09T01:23:59.521840,8,Fresh Milk,ml,2026-10-02,3000.0,4000.0,1000.0,unrecorded_receiving
+3,2026-10-12T01:23:59.521840,7,Chocolate Syrup,ml,2026-10-03,1500.0,1200.0,-300.0,unexplained
+3,2026-10-12T01:23:59.521840,5,Fresh Milk,ml,2026-10-05,1500.0,2000.0,500.0,unexplained
+3,2026-10-12T01:23:59.521840,8,Fresh Milk,ml,2026-10-02,2000.0,1500.0,-500.0,unexplained

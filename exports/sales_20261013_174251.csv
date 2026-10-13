@@ -1,0 +1,13 @@
+﻿Date,Transaction,Shift,Cashier,Menu Item,Quantity,Unit Price At Sale,Line Total,Voided
+2026-10-07T20:23:59.521840,1,1,Test Barista,Latte,4,120.0,480.0,No
+2026-10-07T20:23:59.521840,2,1,Test Barista,Americano,2,100.0,200.0,No
+2026-10-08T20:23:59.521840,3,1,Test Barista,Latte,5,120.0,600.0,No
+2026-10-08T20:23:59.521840,4,1,Test Barista,Cappuccino,3,115.0,345.0,No
+2026-10-09T20:23:59.521840,5,2,Test Barista,Latte,3,120.0,360.0,No
+2026-10-09T20:23:59.521840,6,2,Test Barista,Mocha,1,135.0,135.0,No
+2026-10-10T20:23:59.521840,7,2,Test Barista,Cappuccino,4,115.0,460.0,No
+2026-10-10T20:23:59.521840,8,2,Test Barista,Espresso,2,95.0,190.0,No
+2026-10-11T20:23:59.521840,9,2,Test Barista,Latte,6,120.0,720.0,No
+2026-10-11T20:23:59.521840,10,2,Test Barista,Cappuccino,2,115.0,230.0,No
+2026-10-12T20:23:59.521840,11,3,Test Barista,Latte,4,120.0,480.0,No
+2026-10-12T20:23:59.521840,12,3,Test Barista,Mocha,2,135.0,270.0,No

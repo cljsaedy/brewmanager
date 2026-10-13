@@ -4,6 +4,7 @@ import '../models/app_user.dart';
 import '../session/session.dart';
 import 'ingredients_screen.dart';
 import 'declare_loss_screen.dart';
+import 'export_screen.dart';
 import 'expiry_matrix_screen.dart';
 import 'loss_chart_screen.dart';
 import 'menu_items_screen.dart';
@@ -92,6 +93,13 @@ class ManagerHomeScreen extends StatelessWidget {
               label: 'Material Loss',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const LossChartScreen()),
+              ),
+            ),
+            _NavCard(
+              icon: Icons.download_outlined,
+              label: 'Export Data',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ExportScreen()),
               ),
             ),
             _NavCard(

@@ -39,6 +39,18 @@ dependencies:
   crypto: ^3.0.6
   # the material loss chart
   fl_chart: ^1.2.0
+  # csv export
+  csv: ^8.0.0
+  # pdf export
+  pdf: ^3.12.0
+  # finds the folder to write exports and backups into
+  path_provider: ^2.1.6
+
+# not packages we use, just a version pin to fix a clash between two of pdf's own
+# dependencies: pdf caps archive below 4.1.0, but image 4.11 calls a method that
+# only exists in archive 4.1, so image is held at the last version that compiles
+dependency_overrides:
+  image: ">=4.1.0 <4.11.0"
 
 dev_dependencies:
   flutter_test:
