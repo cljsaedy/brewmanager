@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../database/user_repository.dart';
 import '../models/app_user.dart';
+import '../widgets/brand_panel.dart';
 import '../widgets/pin_keypad.dart';
 import 'pin_entry_screen.dart';
 
@@ -61,33 +62,10 @@ class _ChangePinScreenState extends State<ChangePinScreen> {
     return Scaffold(
       body: Row(
         children: [
-          Expanded(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.lock_reset,
-                      size: 96,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Set a new Manager PIN',
-                      style: Theme.of(context).textTheme.headlineMedium,
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'The default PIN must be replaced before '
-                      'BrewManager can be used.',
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
+          const Expanded(
+            child: BrandPanel(
+              caption: 'Set a new Manager PIN.\n'
+                  'The default must be replaced before BrewManager can be used.',
             ),
           ),
           Expanded(

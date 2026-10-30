@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../database/user_repository.dart';
 import '../models/app_user.dart';
 import '../session/session.dart';
+import '../widgets/brand_panel.dart';
 import '../widgets/pin_keypad.dart';
 import 'barista_home_screen.dart';
 import 'manager_home_screen.dart';
@@ -63,29 +64,13 @@ class _PinEntryScreenState extends State<PinEntryScreen> {
     return Scaffold(
       body: Row(
         children: [
-          // left half, branding and prompt
-          Expanded(
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.coffee,
-                    size: 96,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'BrewManager',
-                    style: Theme.of(context).textTheme.headlineLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  const Text('Enter your PIN to begin'),
-                ],
-              ),
+          // left half, the dark brand panel
+          const Expanded(
+            child: BrandPanel(
+              caption: 'Enter your PIN to start serving.',
             ),
           ),
-          // right half, keypad
+          // right half, keypad on the pale working surface
           Expanded(
             child: Center(
               child: PinKeypad(

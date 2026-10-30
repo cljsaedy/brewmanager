@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:brewmanager/models/app_user.dart';
+import 'package:brewmanager/screens/pin_entry_screen.dart';
 import 'package:brewmanager/session/idle_lock.dart';
 import 'package:brewmanager/session/session.dart';
 
@@ -35,7 +36,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(Session.currentUser, isNull);
-    expect(find.text('Enter your PIN to begin'), findsOneWidget);
+    // by type, not by wording, so copy changes don't break this
+    expect(find.byType(PinEntryScreen), findsOneWidget);
   });
 
   testWidgets('a touch resets the countdown', (tester) async {
@@ -50,6 +52,48 @@ void main() {
 
     expect(Session.currentUser, fakeUser);
     expect(find.text('HOME'), findsOneWidget);
+  });
+
+  testWidgets('a suspended lock leaves a logged in user alone', (tester) async {
+    Session.currentUser = fakeUser;
+    IdleLock.suspend();
+    addTearDown(IdleLock.resume);
+
+    await tester.pumpWidget(buildApp());
+    await tester.pump(IdleLock.timeout + const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+
+    // the closing count asks for this, being locked out mid count loses the count
+    expect(Session.currentUser, fakeUser);
+    expect(find.text('HOME'), findsOneWidget);
+  });
+
+  testWidgets('resuming restores the lock', (tester) async {
+    Session.currentUser = fakeUser;
+    IdleLock.suspend();
+    IdleLock.resume();
+    expect(IdleLock.isSuspended, isFalse);
+
+    await tester.pumpWidget(buildApp());
+    await tester.pump(IdleLock.timeout + const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+
+    expect(Session.currentUser, isNull);
+  });
+
+  test('suspend counts, so nested screens cannot leave it stuck on', () {
+    IdleLock.suspend();
+    IdleLock.suspend();
+    IdleLock.resume();
+    // still held by the outer one
+    expect(IdleLock.isSuspended, isTrue);
+
+    IdleLock.resume();
+    expect(IdleLock.isSuspended, isFalse);
+
+    // extra resumes can't push it negative and disable the lock for good
+    IdleLock.resume();
+    expect(IdleLock.isSuspended, isFalse);
   });
 
   testWidgets('does nothing when no one is logged in', (tester) async {

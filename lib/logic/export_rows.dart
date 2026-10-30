@@ -35,9 +35,7 @@ class ExportRows {
   }
 
   /// the accuracy evidence, what the system expected against what was counted
-  static List<List<Object?>> reconciliation(
-    List<Map<String, Object?>> rows,
-  ) {
+  static List<List<Object?>> reconciliation(List<Map<String, Object?>> rows) {
     return [
       [
         'Shift',
@@ -93,6 +91,41 @@ class ExportRows {
           r['combined_score'],
           // yes/no reads better than 1/0 in a spreadsheet
           (r['was_accepted'] as int?) == 1 ? 'Yes' : 'No',
+        ],
+    ];
+  }
+
+  /// current stock, one row per batch that still has something in it
+  ///
+  /// a snapshot rather than a period, so no date range applies, this is what is
+  /// on the shelf at the moment the file is written
+  ///
+  /// the five fields chapter 3 names are ingredient, expiry date, container
+  /// capacity, containers received and quantity remaining
+  ///
+  /// batch is added because every other export identifies rows that way and it
+  /// is what the app, the closing count and the void dialog all refer to, and
+  /// unit is added because a quantity with no unit cannot be read
+  static List<List<Object?>> inventory(List<Map<String, Object?>> rows) {
+    return [
+      [
+        'Batch',
+        'Ingredient',
+        'Unit',
+        'Expiry Date',
+        'Container Capacity',
+        'Containers Received',
+        'Quantity Remaining',
+      ],
+      for (final r in rows)
+        [
+          r['batch_id'],
+          r['ingredient_name'],
+          r['unit_of_measure'],
+          r['expiry_date'],
+          r['container_capacity'],
+          r['containers_received'],
+          r['quantity_remaining'],
         ],
     ];
   }

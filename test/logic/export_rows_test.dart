@@ -183,6 +183,77 @@ void main() {
     });
   });
 
+  group('ExportRows.inventory', () {
+    test('carries the five fields chapter 3 names, plus batch and unit', () {
+      final rows = ExportRows.inventory([
+        {
+          'batch_id': 4,
+          'ingredient_name': 'Fresh Milk',
+          'unit_of_measure': 'ml',
+          'expiry_date': '2026-10-24',
+          'container_capacity': 1000.0,
+          'containers_received': 6,
+          'quantity_remaining': 6000.0,
+        },
+      ]);
+
+      expect(rows.first, [
+        'Batch',
+        'Ingredient',
+        'Unit',
+        'Expiry Date',
+        'Container Capacity',
+        'Containers Received',
+        'Quantity Remaining',
+      ]);
+
+      expect(rows[1][0], 4);
+      expect(rows[1][1], 'Fresh Milk');
+      // a quantity with no unit cannot be read, so the unit travels with it
+      expect(rows[1][2], 'ml');
+      expect(rows[1][3], '2026-10-24');
+      expect(rows[1][4], 1000.0);
+      expect(rows[1][5], 6);
+      expect(rows[1][6], 6000.0);
+    });
+
+    test('an empty stock room still produces a header row', () {
+      final rows = ExportRows.inventory([]);
+
+      // a file with only headers is a valid answer to "what is in stock"
+      expect(rows.length, 1);
+      expect(rows.first, contains('Quantity Remaining'));
+    });
+
+    test('one row per batch, not per ingredient', () {
+      final rows = ExportRows.inventory([
+        {
+          'batch_id': 1,
+          'ingredient_name': 'Fresh Milk',
+          'unit_of_measure': 'ml',
+          'expiry_date': '2026-10-20',
+          'container_capacity': 1000.0,
+          'containers_received': 2,
+          'quantity_remaining': 1400.0,
+        },
+        {
+          'batch_id': 2,
+          'ingredient_name': 'Fresh Milk',
+          'unit_of_measure': 'ml',
+          'expiry_date': '2026-10-24',
+          'container_capacity': 1000.0,
+          'containers_received': 6,
+          'quantity_remaining': 6000.0,
+        },
+      ]);
+
+      // two batches of the same ingredient stay separate, because the expiry
+      // date and the container size are what make a batch a batch
+      expect(rows.length, 3);
+      expect(rows[1][3], '2026-10-20');
+      expect(rows[2][3], '2026-10-24');
+    });
+  });
   group('ExportRows.formatTimestamp', () {
     test('trims microseconds down to minutes', () {
       expect(

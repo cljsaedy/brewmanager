@@ -5,6 +5,8 @@
 /// kept separate so it can be unit tested without sqlite
 library;
 
+import 'expiry_risk.dart';
+
 /// the bits of a batch the engine needs, small on purpose so tests are easy to write
 class BatchStock {
   final int batchId;
@@ -43,10 +45,32 @@ class FefoEngine {
   FefoEngine._();
 
   /// works out which batches to take [needed] from
-  static FefoPlan plan(List<BatchStock> batches, double needed) {
-    // skip empty batches, then sort earliest expiry first
-    // same expiry → smaller remaining first so partial cartons get finished off (rule 2)
-    final sorted = batches.where((b) => b.quantityRemaining > 0).toList()
+  /// [today] decides which batches have expired
+  ///
+  /// required rather than defaulted, because the whole point of this engine is
+  /// to deduct from the batch nearest its expiry date, which means an expired
+  /// one sorts to the very front and would be deducted first of all unless it
+  /// is taken out, and nobody should be able to call this without deciding that
+  static FefoPlan plan(
+    List<BatchStock> batches,
+    double needed, {
+    required DateTime today,
+  }) {
+    // skip empty batches and anything past its expiry date
+    //
+    // an expired batch is still on the shelf and still gets counted at the
+    // closing audit, but it cannot be sold, so it is not stock this engine may
+    // draw from
+    //
+    // then sort earliest expiry first, and on the same expiry date the smaller
+    // remaining first so partial containers get finished off (rule 2)
+    final sorted = batches
+        .where(
+          (b) =>
+              b.quantityRemaining > 0 &&
+              !ExpiryRisk.isExpired(b.expiryDate, today),
+        )
+        .toList()
       ..sort((a, b) {
         final byExpiry = a.expiryDate.compareTo(b.expiryDate);
         if (byExpiry != 0) return byExpiry;

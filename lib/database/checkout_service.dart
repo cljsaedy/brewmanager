@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import '../logic/fefo_engine.dart';
 import '../logic/mutex.dart';
 import '../models/order_line.dart';
+import '../models/inventory_batch.dart' show formatDate;
 import '../models/recipe_blueprint.dart';
 import 'database_helper.dart';
 import 'recipe_repository.dart';
@@ -58,7 +59,9 @@ class CheckoutService {
     final db = await _helper.database;
     final shiftId = await _shifts.getOrCreateOpenShift(userId);
     final recipesByItem = await _recipes.getAllGroupedByMenuItem();
-    final now = DateTime.now().toIso8601String();
+    // read once, so every batch in one sale is judged against the same date
+    final today = DateTime.now();
+    final now = today.toIso8601String();
 
     // everything below is one transaction, if any step throws nothing is written at all
     // without this a crash mid checkout could deduct stock for a sale that was never recorded
@@ -82,7 +85,7 @@ class CheckoutService {
         });
       }
 
-      await _deductIngredients(txn, transactionId, order, recipesByItem);
+      await _deductIngredients(txn, transactionId, order, recipesByItem, today);
 
       return CheckoutResult(
         transactionId: transactionId,
@@ -98,6 +101,7 @@ class CheckoutService {
     int transactionId,
     RunningOrder order,
     Map<int, List<RecipeBlueprint>> recipesByItem,
+    DateTime today,
   ) async {
     // 2 lattes needing 200ml each is one 400ml deduction, not two
     final needed = <int, double>{};
@@ -119,6 +123,7 @@ class CheckoutService {
         entry.key,
         entry.value,
         names[entry.key]!,
+        today,
       );
     }
   }
@@ -129,13 +134,19 @@ class CheckoutService {
     int ingredientId,
     double quantityNeeded,
     RecipeBlueprint info,
+    DateTime today,
   ) async {
     // read batches inside the transaction, the screen's copy was loaded earlier and may be stale
+    //
+    // expired stock is excluded here as well as in the engine, because this is
+    // the query a sale actually commits against and the rule has to hold even if
+    // a caller somewhere passes the wrong date
     final rows = await txn.query(
       'inventory_batches',
       columns: ['batch_id', 'expiry_date', 'quantity_remaining'],
-      where: 'ingredient_id = ? AND quantity_remaining > 0',
-      whereArgs: [ingredientId],
+      where:
+          'ingredient_id = ? AND quantity_remaining > 0 AND expiry_date >= ?',
+      whereArgs: [ingredientId, formatDate(today)],
     );
 
     final batches = rows
@@ -146,7 +157,7 @@ class CheckoutService {
             ))
         .toList();
 
-    final plan = FefoEngine.plan(batches, quantityNeeded);
+    final plan = FefoEngine.plan(batches, quantityNeeded, today: today);
 
     // throwing rolls back the whole sale, the customer is told before anything is recorded
     if (!plan.isFullyCovered) {

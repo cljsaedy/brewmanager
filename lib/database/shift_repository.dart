@@ -86,6 +86,33 @@ class ShiftRepository {
     return rows.map(Shift.fromMap).toList();
   }
 
+  /// newest shifts first, each with what it took and whether it was counted
+  Future<List<ShiftWithSummary>> getRecentWithSummary({int limit = 50}) async {
+    final db = await _helper.database;
+    final rows = await db.rawQuery('''
+      SELECT s.*, u.name AS user_name,
+             (SELECT COUNT(*) FROM transactions t
+               WHERE t.shift_id = s.shift_id AND t.is_voided = 0)
+               AS sale_count,
+             -- voided sales are left out of the total, they were reversed
+             (SELECT SUM(t.total_amount) FROM transactions t
+               WHERE t.shift_id = s.shift_id AND t.is_voided = 0)
+               AS sales_total,
+             (SELECT COUNT(*) FROM transactions t
+               WHERE t.shift_id = s.shift_id AND t.is_voided = 1)
+               AS voided_count,
+             (SELECT COUNT(*) FROM loss_events l
+               WHERE l.shift_id = s.shift_id) AS loss_count,
+             (SELECT COUNT(*) FROM reconciliation_logs r
+               WHERE r.shift_id = s.shift_id) AS count_rows
+      FROM shift_sessions s
+      JOIN users u ON u.user_id = s.user_id
+      ORDER BY s.opened_at DESC
+      LIMIT ?
+    ''', [limit]);
+    return rows.map(ShiftWithSummary.fromMap).toList();
+  }
+
   /// what happened during one shift
   Future<ShiftSummary> getSummary(int shiftId) async {
     final db = await _helper.database;

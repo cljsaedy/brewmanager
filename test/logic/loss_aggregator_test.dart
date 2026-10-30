@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:brewmanager/logic/loss_aggregator.dart';
+import 'package:brewmanager/models/ingredient.dart';
 import 'package:brewmanager/models/loss_record.dart';
 
 void main() {
@@ -238,7 +239,9 @@ void main() {
       ]);
 
       final milk = rows.firstWhere((r) => r.ingredientName == 'Fresh Milk');
-      final beans = rows.firstWhere((r) => r.ingredientName == 'Espresso Beans');
+      final beans = rows.firstWhere(
+        (r) => r.ingredientName == 'Espresso Beans',
+      );
 
       // real quantities, not containers, so the exact figures are always available
       expect(milk.declared, 1000);
@@ -267,7 +270,245 @@ void main() {
         ),
       ]);
 
-      expect(rows.map((r) => r.ingredientName), ['Caramel Syrup', 'Fresh Milk']);
+      expect(rows.map((r) => r.ingredientName), [
+        'Caramel Syrup',
+        'Fresh Milk',
+      ]);
+    });
+  });
+
+  group('LossAggregator.ranked', () {
+    Ingredient ing(int id, String name, String unit) => Ingredient(
+      ingredientId: id,
+      name: name,
+      unitOfMeasure: unit,
+      isArchived: false,
+    );
+
+    final ingredients = [
+      ing(1, 'Fresh Milk', 'ml'),
+      ing(2, 'Espresso Beans', 'g'),
+      ing(3, 'Caramel Syrup', 'ml'),
+    ];
+
+    test('only the asked for category is counted', () {
+      final rows = LossAggregator.ranked(
+        records: [
+          record(
+            day: '2026-10-01',
+            ingredientId: 1,
+            name: 'Fresh Milk',
+            unit: 'ml',
+            category: LossCategory.declared,
+            quantity: 1000,
+          ),
+          record(
+            day: '2026-10-01',
+            ingredientId: 1,
+            name: 'Fresh Milk',
+            unit: 'ml',
+            category: LossCategory.unexplained,
+            quantity: 250,
+          ),
+        ],
+        category: LossCategory.unexplained,
+        ingredients: ingredients,
+      );
+
+      final milk = rows.firstWhere((r) => r.ingredientId == 1);
+      expect(milk.quantity, 250);
+    });
+
+    test('ranks by container equivalent, not by the raw amount', () {
+      final rows = LossAggregator.ranked(
+        records: [
+          // 600g of 1000g bags is more than half a container
+          record(
+            day: '2026-10-01',
+            ingredientId: 2,
+            name: 'Espresso Beans',
+            unit: 'g',
+            category: LossCategory.unexplained,
+            quantity: 600,
+            capacity: 1000,
+          ),
+          // 900ml of 1000ml cartons is a bigger share despite similar numbers
+          record(
+            day: '2026-10-01',
+            ingredientId: 1,
+            name: 'Fresh Milk',
+            unit: 'ml',
+            category: LossCategory.unexplained,
+            quantity: 900,
+            capacity: 1000,
+          ),
+        ],
+        category: LossCategory.unexplained,
+        ingredients: ingredients,
+      );
+
+      expect(rows.first.ingredientName, 'Fresh Milk');
+      expect(rows.first.containers, 0.9);
+      expect(rows[1].ingredientName, 'Espresso Beans');
+    });
+
+    test(
+      'a smaller amount can outrank a bigger one in a smaller container',
+      () {
+        final rows = LossAggregator.ranked(
+          records: [
+            // 1000ml of milk is one whole carton
+            record(
+              day: '2026-10-01',
+              ingredientId: 1,
+              name: 'Fresh Milk',
+              unit: 'ml',
+              category: LossCategory.unexplained,
+              quantity: 1000,
+              capacity: 1000,
+            ),
+            // 600ml of syrup is most of a 750ml bottle, so it ranks below one
+            // whole carton but the raw numbers alone would not say so
+            record(
+              day: '2026-10-01',
+              ingredientId: 3,
+              name: 'Caramel Syrup',
+              unit: 'ml',
+              category: LossCategory.unexplained,
+              quantity: 600,
+              capacity: 750,
+            ),
+          ],
+          category: LossCategory.unexplained,
+          ingredients: ingredients,
+        );
+
+        expect(rows.first.ingredientName, 'Fresh Milk');
+        expect(rows.first.containers, 1.0);
+        expect(rows[1].containers, closeTo(0.8, 1e-9));
+      },
+    );
+
+    test('ingredients with no loss stay in the list as zero rows', () {
+      final rows = LossAggregator.ranked(
+        records: [
+          record(
+            day: '2026-10-01',
+            ingredientId: 1,
+            name: 'Fresh Milk',
+            unit: 'ml',
+            category: LossCategory.unexplained,
+            quantity: 250,
+          ),
+        ],
+        category: LossCategory.unexplained,
+        ingredients: ingredients,
+      );
+
+      // all three appear, so an ingredient with no loss is visibly fine rather
+      // than looking as though it was left out of the report
+      expect(rows.length, 3);
+      expect(rows.where((r) => r.isZero).length, 2);
+    });
+
+    test('zero rows are ordered by name so the list is stable', () {
+      final rows = LossAggregator.ranked(
+        records: const [],
+        category: LossCategory.unexplained,
+        ingredients: ingredients,
+      );
+
+      expect(rows.map((r) => r.ingredientName), [
+        'Caramel Syrup',
+        'Espresso Beans',
+        'Fresh Milk',
+      ]);
+    });
+
+    test('an archived ingredient still appears if it has historical loss', () {
+      final rows = LossAggregator.ranked(
+        records: [
+          record(
+            day: '2026-10-01',
+            ingredientId: 99,
+            name: 'Discontinued Syrup',
+            unit: 'ml',
+            category: LossCategory.unexplained,
+            quantity: 500,
+          ),
+        ],
+        category: LossCategory.unexplained,
+        // not in the active list any more
+        ingredients: ingredients,
+      );
+
+      expect(rows.first.ingredientName, 'Discontinued Syrup');
+      expect(rows.length, 4);
+    });
+  });
+
+  group('LossAggregator.needsAttention', () {
+    Ingredient ing(int id, String name, String unit) => Ingredient(
+      ingredientId: id,
+      name: name,
+      unitOfMeasure: unit,
+      isArchived: false,
+    );
+
+    final ingredients = [ing(1, 'Fresh Milk', 'ml'), ing(2, 'Beans', 'g')];
+
+    test('picks the worst unexplained loss', () {
+      final worst = LossAggregator.needsAttention(
+        records: [
+          record(
+            day: '2026-10-01',
+            ingredientId: 1,
+            name: 'Fresh Milk',
+            unit: 'ml',
+            category: LossCategory.unexplained,
+            quantity: 300,
+          ),
+          record(
+            day: '2026-10-01',
+            ingredientId: 2,
+            name: 'Beans',
+            unit: 'g',
+            category: LossCategory.unexplained,
+            quantity: 800,
+          ),
+        ],
+        ingredients: ingredients,
+      );
+
+      expect(worst!.ingredientName, 'Beans');
+    });
+
+    test('ignores reported losses, those are already explained', () {
+      final worst = LossAggregator.needsAttention(
+        records: [
+          record(
+            day: '2026-10-01',
+            ingredientId: 1,
+            name: 'Fresh Milk',
+            unit: 'ml',
+            category: LossCategory.declared,
+            quantity: 5000,
+          ),
+        ],
+        ingredients: ingredients,
+      );
+
+      // a dropped carton points at an incident, not at something to change
+      expect(worst, isNull);
+    });
+
+    test('nothing to report when there is no unexplained loss', () {
+      final worst = LossAggregator.needsAttention(
+        records: const [],
+        ingredients: ingredients,
+      );
+
+      expect(worst, isNull);
     });
   });
 }

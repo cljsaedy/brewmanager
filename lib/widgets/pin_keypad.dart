@@ -123,9 +123,22 @@ class _PinKeypadState extends State<PinKeypad> {
                 onPressed: _backspace,
                 icon: const Icon(Icons.backspace_outlined, size: 28),
               )
+            // circular, the way a phone keypad looks, the app's square corners
+            // elsewhere would make these read as buttons in a form instead
             : FilledButton.tonal(
                 onPressed: () => _addDigit(key),
-                child: Text(key, style: const TextStyle(fontSize: 28)),
+                style: FilledButton.styleFrom(
+                  shape: const CircleBorder(),
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                ),
+                child: Text(
+                  key,
+                  style: const TextStyle(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ),
       ),
     );

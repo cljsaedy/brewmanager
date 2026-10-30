@@ -23,13 +23,18 @@ class MenuItemRepository {
   }
 
   /// returns the new menu_item_id
-  Future<int> insert(String name, double sellingPrice) async {
+  Future<int> insert(
+    String name,
+    double sellingPrice, {
+    bool isIngredientTracked = true,
+  }) async {
     final db = await _helper.database;
     try {
       return await db.insert('menu_items', {
         'name': name.trim(),
         'selling_price': sellingPrice,
         'is_archived': 0,
+        'is_ingredient_tracked': isIngredientTracked ? 1 : 0,
       });
     } on DatabaseException catch (e) {
       // name is UNIQUE, give the screen something it can show

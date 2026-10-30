@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../database/database_helper.dart';
+import '../logic/file_naming.dart';
 
 /// thrown when the chosen file isn't a sqlite database
 ///
@@ -17,7 +18,7 @@ class NotADatabaseException implements Exception {}
 /// which is one of the upsides of the offline-first design
 class BackupService {
   BackupService({DatabaseHelper? helper})
-      : _helper = helper ?? DatabaseHelper.instance;
+    : _helper = helper ?? DatabaseHelper.instance;
 
   final DatabaseHelper _helper;
 
@@ -31,10 +32,10 @@ class BackupService {
   ];
 
   Future<Directory> backupDirectory() async {
-    final base = await getExternalStorageDirectory() ??
+    final base =
+        await getExternalStorageDirectory() ??
         await getApplicationDocumentsDirectory();
-    final dir =
-        Directory(p.join(base.path, _folderName, _backupSubfolder));
+    final dir = Directory(p.join(base.path, _folderName, _backupSubfolder));
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
@@ -56,7 +57,7 @@ class BackupService {
   }
 
   /// copies the live database into the backup folder
-  Future<File> createBackup({String prefix = 'backup'}) async {
+  Future<File> createBackup({String label = 'Backup'}) async {
     final sourcePath = await _helper.databaseFilePath();
 
     // close first so nothing is mid write while the bytes are being copied
@@ -64,7 +65,9 @@ class BackupService {
 
     try {
       final dir = await backupDirectory();
-      final target = File(p.join(dir.path, '${prefix}_${_stamp()}.db'));
+      final target = File(
+        p.join(dir.path, backupFileName(label: label, at: DateTime.now())),
+      );
       await File(sourcePath).copy(target.path);
       return target;
     } finally {
@@ -85,7 +88,7 @@ class BackupService {
       throw NotADatabaseException();
     }
 
-    final safetyCopy = await createBackup(prefix: 'before_restore');
+    final safetyCopy = await createBackup(label: 'Before restore');
 
     final targetPath = await _helper.databaseFilePath();
     await _helper.close();
@@ -120,12 +123,5 @@ class BackupService {
     } finally {
       await handle.close();
     }
-  }
-
-  String _stamp() {
-    final now = DateTime.now();
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${now.year}${two(now.month)}${two(now.day)}'
-        '_${two(now.hour)}${two(now.minute)}${two(now.second)}';
   }
 }

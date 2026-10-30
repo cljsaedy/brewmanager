@@ -288,6 +288,37 @@ void main() {
       expect(ranking.top!.menuItem.name, 'Latte');
     });
 
+    test('food sold as a whole unit is never suggested', () {
+      final ranking = SuggestionEngine.rank(
+        candidates: [
+          // popular, but selling it saves nothing from expiring
+          SuggestionCandidate(
+            menuItem: const MenuItem(
+              menuItemId: 1,
+              name: 'Butter Croissant',
+              sellingPrice: 90,
+              isArchived: false,
+              isIngredientTracked: false,
+            ),
+            recipeLines: const [],
+            timesSold: 50,
+          ),
+          SuggestionCandidate(
+            menuItem: item(2, 'Latte'),
+            recipeLines: [line(10, 'Fresh Milk', 200)],
+            timesSold: 1,
+          ),
+        ],
+        stockByIngredient: {
+          10: [batch(1, inDays(1), 1000)],
+        },
+        today: today,
+      );
+
+      expect(ranking.suggestions.length, 1);
+      expect(ranking.top!.menuItem.name, 'Latte');
+    });
+
     test('an item with no recipe is never suggested', () {
       final ranking = SuggestionEngine.rank(
         candidates: [

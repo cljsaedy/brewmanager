@@ -2,11 +2,20 @@ import 'package:flutter/material.dart';
 
 import '../database/ingredient_repository.dart';
 import '../database/recipe_repository.dart';
+import '../database/stock_repository.dart';
+import '../logic/availability_calculator.dart';
+import '../logic/formatting.dart';
 import '../models/ingredient.dart';
 import '../models/menu_item.dart';
 import '../models/recipe_blueprint.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
+import '../widgets/empty_state.dart';
 
-/// recipe lines for one menu item, which ingredients and how much of each per drink
+/// the recipe for one menu item, which ingredients and how much of each
+///
+/// this is what turns a sale into stock movement, the till reads these lines and
+/// fefo deducts each amount, so an item with no lines can't be sold at all
 class RecipeScreen extends StatefulWidget {
   const RecipeScreen({super.key, required this.menuItem});
 
@@ -19,9 +28,11 @@ class RecipeScreen extends StatefulWidget {
 class _RecipeScreenState extends State<RecipeScreen> {
   final _recipes = RecipeRepository();
   final _ingredients = IngredientRepository();
+  final _stock = StockRepository();
 
   List<RecipeBlueprint> _lines = [];
   List<Ingredient> _allIngredients = [];
+  Availability? _availability;
   bool _loading = true;
 
   @override
@@ -33,10 +44,14 @@ class _RecipeScreenState extends State<RecipeScreen> {
   Future<void> _reload() async {
     final lines = await _recipes.getForMenuItem(widget.menuItem.menuItemId);
     final ingredients = await _ingredients.getActive();
+    final stock = await _stock.getAllBatchStock();
     if (!mounted) return;
     setState(() {
       _lines = lines;
       _allIngredients = ingredients;
+      // how many of this drink the stock on hand could actually make, so the
+      // recipe being edited is tied to what is in the fridge
+      _availability = AvailabilityCalculator.forMenuItem(lines, stock);
       _loading = false;
     });
   }
@@ -88,7 +103,10 @@ class _RecipeScreenState extends State<RecipeScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Remove ${line.ingredientName}?'),
-        content: const Text('Future sales will no longer deduct it.'),
+        content: const Text(
+          'Future sales of this item will no longer deduct it. Past sales keep '
+          'the deductions they already made.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -123,32 +141,125 @@ class _RecipeScreenState extends State<RecipeScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _lines.isEmpty
-              ? const Center(child: Text('No ingredients in this recipe yet'))
-              : ListView.separated(
-                  itemCount: _lines.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final line = _lines[index];
-                    return ListTile(
-                      title: Text(line.ingredientName),
-                      subtitle: Text(
-                        '${_fmt(line.quantityRequired)} ${line.unitOfMeasure} per serving',
-                      ),
-                      onTap: () => _editQuantity(line),
-                      trailing: IconButton(
-                        tooltip: 'Remove',
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: () => _remove(line),
-                      ),
-                    );
-                  },
+          : Column(
+              children: [
+                _buildHeader(),
+                const Divider(height: 1),
+                Expanded(
+                  child: _lines.isEmpty
+                      ? EmptyState(
+                          icon: Icons.receipt_long_outlined,
+                          title: 'No ingredients yet',
+                          message:
+                              '${widget.menuItem.name} cannot be sold until its '
+                              'recipe says what it is made of. Add each '
+                              'ingredient and how much one serving uses.',
+                        )
+                      : ListView.separated(
+                          padding: const EdgeInsets.only(bottom: 88),
+                          itemCount: _lines.length,
+                          separatorBuilder: (_, _) => const Divider(height: 1),
+                          itemBuilder: (context, index) {
+                            final line = _lines[index];
+                            return ListTile(
+                              title: Text(line.ingredientName),
+                              subtitle: const Text('per serving'),
+                              onTap: () => _editQuantity(line),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '${quantity(line.quantityRequired)} '
+                                    '${line.unitOfMeasure}',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .headlineSmall,
+                                  ),
+                                  const SizedBox(width: AppSpacing.md),
+                                  IconButton(
+                                    tooltip: 'Remove',
+                                    icon: const Icon(Icons.delete_outline),
+                                    onPressed: () => _remove(line),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
                 ),
+              ],
+            ),
     );
   }
 
-  // show 30 not 30.0, but keep 7.5
-  String _fmt(double v) => v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+  /// the price and what current stock could make, the recipe's consequence
+  Widget _buildHeader() {
+    final availability = _availability;
+    final servings = availability?.servings ?? 0;
+    final canMake = availability?.canMakeAtLeastOne ?? false;
+    final blocker = availability?.limitingIngredient;
+
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Sells for ${money(widget.menuItem.sellingPrice)}',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                Text(
+                  _lines.isEmpty
+                      ? 'No ingredients set'
+                      : '${_lines.length} '
+                          'ingredient${_lines.length == 1 ? '' : 's'} per serving',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
+              vertical: AppSpacing.md,
+            ),
+            decoration: BoxDecoration(
+              color: (canMake ? AppColors.safe : AppColors.danger)
+                  .withValues(alpha: 0.10),
+              border: Border.all(
+                color: canMake ? AppColors.safe : AppColors.danger,
+              ),
+              borderRadius: BorderRadius.circular(AppSizes.radius),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  canMake ? '$servings' : '0',
+                  style: TextStyle(
+                    fontSize: 23,
+                    fontWeight: FontWeight.w700,
+                    color: canMake ? AppColors.safeText : AppColors.dangerText,
+                  ),
+                ),
+                Text(
+                  _lines.isEmpty
+                      ? 'needs a recipe'
+                      : canMake
+                          ? 'can be made from stock'
+                          : 'out of ${blocker ?? 'stock'}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// what the dialog hands back
@@ -173,15 +284,16 @@ class _LineFormDialogState extends State<_LineFormDialog> {
   final _formKey = GlobalKey<FormState>();
   Ingredient? _picked;
   late final _qtyCtrl = TextEditingController(
-    text: widget.existing?.quantityRequired.toString(),
+    text: widget.existing == null
+        ? null
+        : quantity(widget.existing!.quantityRequired),
   );
 
   bool get _isEdit => widget.existing != null;
 
   // unit label next to the quantity field, from the picked ingredient or the existing line
-  String get _unit => _isEdit
-      ? widget.existing!.unitOfMeasure
-      : (_picked?.unitOfMeasure ?? '');
+  String get _unit =>
+      _isEdit ? widget.existing!.unitOfMeasure : (_picked?.unitOfMeasure ?? '');
 
   @override
   void dispose() {
@@ -230,7 +342,7 @@ class _LineFormDialogState extends State<_LineFormDialog> {
                   onChanged: (v) => setState(() => _picked = v),
                   validator: (v) => v == null ? 'Pick an ingredient' : null,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.lg),
               ],
               TextFormField(
                 controller: _qtyCtrl,

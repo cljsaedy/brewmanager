@@ -13,7 +13,11 @@ class DatabaseHelper {
   static const String _fileName = 'brewmanager.db';
 
   /// bump this when the schema changes after install, sqflite then runs _onUpgrade
-  static const int _version = 1;
+  ///
+  /// 2 added menu_items.is_ingredient_tracked, which separates drinks made from
+  /// tracked ingredients from food sold as a whole unit, and three columns on
+  /// inventory_batches recording who last corrected a batch's figures
+  static const int _version = 2;
 
   Database? _db;
 
@@ -74,8 +78,30 @@ class DatabaseHelper {
     });
   }
 
-  /// runs when _version goes up on an installed app, nothing to migrate yet
-  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {}
+  /// runs when _version goes up on an installed app
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // existing menu items are all drinks, so they default to tracked
+      await db.execute(
+        'ALTER TABLE menu_items '
+        'ADD COLUMN is_ingredient_tracked INTEGER NOT NULL DEFAULT 1',
+      );
+
+      // all nullable with no default, a batch that was never corrected simply
+      // has nothing in these, which is also what sqlite requires for a column
+      // added with a REFERENCES clause
+      await db.execute(
+        'ALTER TABLE inventory_batches '
+        'ADD COLUMN corrected_by INTEGER REFERENCES users(user_id)',
+      );
+      await db.execute(
+        'ALTER TABLE inventory_batches ADD COLUMN corrected_at TEXT',
+      );
+      await db.execute(
+        'ALTER TABLE inventory_batches ADD COLUMN previous_quantity REAL',
+      );
+    }
+  }
 
   // schema, names match CLAUDE.md exactly
   // booleans are INTEGER 0/1 since sqlite has no bool
@@ -130,6 +156,17 @@ class DatabaseHelper {
   ''';
 
   // a batch = one expiry date + one container size, this is what FEFO deducts from
+  //
+  // the last three columns record a correction to figures that were entered
+  // wrongly at receiving, following the same pattern as transactions.voided_by:
+  // the actor is recorded on the row that was affected
+  //
+  // previous_quantity is kept because an expiry or capacity mistake is
+  // self-evident from the corrected figure, whereas a quantity change could
+  // hide waste, so the before value is the one worth keeping
+  //
+  // only the most recent correction is kept, a batch corrected twice loses the
+  // earlier before-value, which is a stated limitation of the design
   static const String _createInventoryBatches = '''
     CREATE TABLE inventory_batches (
       batch_id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -138,16 +175,26 @@ class DatabaseHelper {
       container_capacity   REAL    NOT NULL,
       containers_received  INTEGER NOT NULL,
       quantity_remaining   REAL    NOT NULL,
-      received_at          TEXT    NOT NULL
+      received_at          TEXT    NOT NULL,
+      corrected_by         INTEGER REFERENCES users(user_id),
+      corrected_at         TEXT,
+      previous_quantity    REAL
     )
   ''';
 
+  // is_ingredient_tracked separates a drink, which is made from ingredients the
+  // system deducts and audits, from prepared food sold as a whole unit
+  //
+  // chapter 1's scope says food items can be sold through the pos but are not
+  // tracked at ingredient level, and without this column the app can't tell a
+  // food item apart from a drink whose recipe someone forgot to set
   static const String _createMenuItems = '''
     CREATE TABLE menu_items (
-      menu_item_id   INTEGER PRIMARY KEY AUTOINCREMENT,
-      name           TEXT    NOT NULL UNIQUE,
-      selling_price  REAL    NOT NULL,
-      is_archived    INTEGER NOT NULL DEFAULT 0
+      menu_item_id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      name                   TEXT    NOT NULL UNIQUE,
+      selling_price          REAL    NOT NULL,
+      is_archived            INTEGER NOT NULL DEFAULT 0,
+      is_ingredient_tracked  INTEGER NOT NULL DEFAULT 1
     )
   ''';
 

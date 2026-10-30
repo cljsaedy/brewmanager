@@ -133,6 +133,10 @@ class SuggestionEngine {
     final suggestions = <Suggestion>[];
 
     for (final candidate in candidates) {
+      // food sold as a whole unit has no stock behind it, so selling it saves
+      // nothing from expiring, which is the only thing this module is for
+      if (candidate.menuItem.isWholeUnit) continue;
+
       final availability = AvailabilityCalculator.forMenuItemFromTotals(
         candidate.recipeLines,
         totals,

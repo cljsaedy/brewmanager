@@ -31,6 +31,32 @@ class Shift {
   }
 }
 
+/// a shift with what it did, for the history list
+class ShiftWithSummary {
+  final Shift shift;
+  final ShiftSummary summary;
+
+  /// whether a closing count was submitted for it
+  ///
+  /// a shift that closed without one is a gap in the correction loop, the drift
+  /// for that stretch of trading was never measured, so the list says so
+  final bool wasCounted;
+
+  const ShiftWithSummary({
+    required this.shift,
+    required this.summary,
+    required this.wasCounted,
+  });
+
+  factory ShiftWithSummary.fromMap(Map<String, Object?> map) {
+    return ShiftWithSummary(
+      shift: Shift.fromMap(map),
+      summary: ShiftSummary.fromMap(map),
+      wasCounted: ((map['count_rows'] as num?)?.toInt() ?? 0) > 0,
+    );
+  }
+}
+
 /// what happened during a shift, for the shift card and the closing summary
 class ShiftSummary {
   final int saleCount;

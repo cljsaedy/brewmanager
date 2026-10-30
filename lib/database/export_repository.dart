@@ -6,7 +6,7 @@ import 'database_helper.dart';
 /// a flat table and building objects just to flatten them again would be wasted work
 class ExportRepository {
   ExportRepository({DatabaseHelper? helper})
-      : _helper = helper ?? DatabaseHelper.instance;
+    : _helper = helper ?? DatabaseHelper.instance;
 
   final DatabaseHelper _helper;
 
@@ -16,7 +16,8 @@ class ExportRepository {
     required DateTime to,
   }) async {
     final db = await _helper.database;
-    return db.rawQuery('''
+    return db.rawQuery(
+      '''
       SELECT r.shift_id, s.closed_at, r.batch_id,
              i.name AS ingredient_name, i.unit_of_measure,
              b.expiry_date,
@@ -29,7 +30,9 @@ class ExportRepository {
       WHERE COALESCE(s.closed_at, s.opened_at) >= ?
         AND COALESCE(s.closed_at, s.opened_at) <= ?
       ORDER BY s.shift_id, i.name COLLATE NOCASE
-    ''', [from.toIso8601String(), to.toIso8601String()]);
+    ''',
+      [from.toIso8601String(), to.toIso8601String()],
+    );
   }
 
   /// every suggestion with its scores, for evaluating the decision support module
@@ -38,7 +41,8 @@ class ExportRepository {
     required DateTime to,
   }) async {
     final db = await _helper.database;
-    return db.rawQuery('''
+    return db.rawQuery(
+      '''
       SELECT sl.suggested_at, sl.shift_id, sl.batch_id,
              m.name AS menu_item_name,
              i.name AS ingredient_name,
@@ -50,7 +54,9 @@ class ExportRepository {
       JOIN ingredients i ON i.ingredient_id = b.ingredient_id
       WHERE sl.suggested_at >= ? AND sl.suggested_at <= ?
       ORDER BY sl.suggested_at
-    ''', [from.toIso8601String(), to.toIso8601String()]);
+    ''',
+      [from.toIso8601String(), to.toIso8601String()],
+    );
   }
 
   /// one row per sold line, at the price it sold for
@@ -59,7 +65,8 @@ class ExportRepository {
     required DateTime to,
   }) async {
     final db = await _helper.database;
-    return db.rawQuery('''
+    return db.rawQuery(
+      '''
       SELECT t.transaction_datetime, t.transaction_id, t.shift_id, t.is_voided,
              u.name AS cashier_name,
              m.name AS menu_item_name,
@@ -71,6 +78,31 @@ class ExportRepository {
       JOIN menu_items m ON m.menu_item_id = ti.menu_item_id
       WHERE t.transaction_datetime >= ? AND t.transaction_datetime <= ?
       ORDER BY t.transaction_datetime, t.transaction_id
-    ''', [from.toIso8601String(), to.toIso8601String()]);
+    ''',
+      [from.toIso8601String(), to.toIso8601String()],
+    );
+  }
+
+  /// every batch that still holds something, for the current stock report
+  ///
+  /// no date range, chapter 3 describes this one as all active batches rather
+  /// than a period, because its purpose is reviewing what is on the shelf now
+  ///
+  /// a batch at zero is not current stock, so depleted ones are left out even
+  /// though the stock screen keeps showing them for the closing count
+  ///
+  /// an archived ingredient's batch is still included, archiving hides an
+  /// ingredient from new recipes but does not empty the containers
+  Future<List<Map<String, Object?>>> inventoryRows() async {
+    final db = await _helper.database;
+    return db.rawQuery('''
+      SELECT b.batch_id, b.expiry_date, b.container_capacity,
+             b.containers_received, b.quantity_remaining,
+             i.name AS ingredient_name, i.unit_of_measure
+      FROM inventory_batches b
+      JOIN ingredients i ON i.ingredient_id = b.ingredient_id
+      WHERE b.quantity_remaining > 0
+      ORDER BY i.name COLLATE NOCASE, b.expiry_date
+    ''');
   }
 }

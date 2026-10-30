@@ -27,6 +27,22 @@ class IngredientRepository {
     return rows.map(Ingredient.fromMap).toList();
   }
 
+  /// active ingredients with what depends on them, for the list and the archive warning
+  Future<List<IngredientUsage>> getActiveWithUsage() async {
+    final db = await _helper.database;
+    final rows = await db.rawQuery('''
+      SELECT i.*,
+             (SELECT COUNT(*) FROM recipe_blueprints rb
+               WHERE rb.ingredient_id = i.ingredient_id) AS recipe_count,
+             (SELECT SUM(b.quantity_remaining) FROM inventory_batches b
+               WHERE b.ingredient_id = i.ingredient_id) AS stock_remaining
+      FROM ingredients i
+      WHERE i.is_archived = 0
+      ORDER BY i.name COLLATE NOCASE
+    ''');
+    return rows.map(IngredientUsage.fromMap).toList();
+  }
+
   /// returns the new ingredient_id
   Future<int> insert(String name, String unitOfMeasure) async {
     final db = await _helper.database;

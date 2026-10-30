@@ -9,6 +9,7 @@ import 'screens/change_pin_screen.dart';
 import 'screens/pin_entry_screen.dart';
 import 'session/idle_lock.dart';
 import 'session/session.dart';
+import 'theme/app_theme.dart';
 import 'widgets/clock_warning_banner.dart';
 
 Future<void> main() async {
@@ -59,10 +60,7 @@ class BrewManagerApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       // so Session.logOut() can navigate without a BuildContext
       navigatorKey: Session.navigatorKey,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.brown),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.build(),
       // builder wraps every screen so the idle timer sees all touches
       builder: (context, child) => IdleLock(child: child!),
       // the gate just shows the warning dialog once, then gets out of the way
