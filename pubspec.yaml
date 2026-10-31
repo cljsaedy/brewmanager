@@ -73,6 +73,19 @@ flutter:
   # "family" key with the font family name, and a "fonts" key with a
   # list giving the asset and other descriptors for the font. For
   # example:
+  # app font, family name must match AppTheme.fontFamily
+  fonts:
+    - family: PublicSans
+      fonts:
+        - asset: assets/fonts/PublicSans-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/PublicSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/PublicSans-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/PublicSans-Bold.ttf
+          weight: 700
+
   # fonts:
   #   - family: Schyler
   #     fonts:
