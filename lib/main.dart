@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'layout/app_layout.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
@@ -13,6 +14,9 @@ Future<void> main() async {
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
   ]);
+
+  // hide the status bar and nav bar, swipe from the edge shows them for a bit then they hide again
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
   runApp(const BrewManagerApp());
 }
@@ -27,51 +31,8 @@ class BrewManagerApp extends StatelessWidget {
       // hide the red "debug" ribbon on the top right
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
-      home: const PlaceholderHome(),
-    );
-  }
-}
-
-// temporary screen just to check the theme on the tablet, gets replaced by the app shell in step 1b
-class PlaceholderHome extends StatelessWidget {
-  const PlaceholderHome({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-
-    return Scaffold(
-      body: Center(
-        child: SizedBox(
-          width: 420,
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                // column only as tall as its content
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('BrewManager', style: text.headlineSmall),
-                  const SizedBox(height: 4),
-                  Text('Theme check', style: text.bodySmall),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      FilledButton(onPressed: () {}, child: const Text('Submit')),
-                      const SizedBox(width: 12),
-                      OutlinedButton(
-                        onPressed: () {},
-                        child: const Text('Day Note'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+      // barista has no login so the app opens straight to the app layout (count tab)
+      home: const AppLayout(),
     );
   }
 }
