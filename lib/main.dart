@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'data/database_helper.dart';
 import 'layout/app_layout.dart';
 import 'theme/app_theme.dart';
 
@@ -17,6 +18,9 @@ Future<void> main() async {
 
   // hide the status bar and nav bar, swipe from the edge shows them for a bit then they hide again
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+  // open the database before showing anything, makes the tables on the very first launch
+  await DatabaseHelper.database;
 
   runApp(const BrewManagerApp());
 }

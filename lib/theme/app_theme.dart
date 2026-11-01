@@ -38,19 +38,20 @@ class AppTheme {
 
   static ThemeData light() {
     // make the material color set from our brown, then swap in our exact colors
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: AppColors.espresso,
-      brightness: Brightness.light,
-    ).copyWith(
-      primary: AppColors.espresso,
-      onPrimary: Colors.white,
-      secondary: AppColors.caramel,
-      onSecondary: Colors.white,
-      surface: AppColors.card,
-      onSurface: AppColors.textMain,
-      error: AppColors.errorText,
-      outlineVariant: AppColors.divider,
-    );
+    final colorScheme =
+        ColorScheme.fromSeed(
+          seedColor: AppColors.espresso,
+          brightness: Brightness.light,
+        ).copyWith(
+          primary: AppColors.espresso,
+          onPrimary: Colors.white,
+          secondary: AppColors.caramel,
+          onSecondary: Colors.white,
+          surface: AppColors.card,
+          onSurface: AppColors.textMain,
+          error: AppColors.errorText,
+          outlineVariant: AppColors.divider,
+        );
 
     return ThemeData(
       useMaterial3: true,
