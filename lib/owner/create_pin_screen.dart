@@ -58,6 +58,8 @@ class _CreatePinScreenState extends State<CreatePinScreen> {
     final confirming = _firstPin != null;
 
     return PinScreenFrame(
+      icon: Icons.lock_outline,
+      stepLabel: confirming ? 'Step 2 of 2' : 'Step 1 of 2',
       title: confirming ? 'Confirm owner PIN' : 'Create owner PIN',
       message: confirming
           ? 'Type the same 4 digits again.'

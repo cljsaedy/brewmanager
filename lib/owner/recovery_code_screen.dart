@@ -17,6 +17,7 @@ class RecoveryCodeScreen extends StatelessWidget {
     return PopScope(
       canPop: false,
       child: PinScreenFrame(
+        icon: Icons.verified_user_outlined,
         title: 'Save your recovery code',
         message:
             'If you forget the PIN, this code lets you set a new one. '
@@ -34,7 +35,7 @@ class RecoveryCodeScreen extends StatelessWidget {
           ),
         ],
         right: SizedBox(
-          width: 280,
+          width: 260,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -43,15 +44,31 @@ class RecoveryCodeScreen extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 12),
-              // SelectableText = the owner can long press to copy it
-              SelectableText(
-                code,
-                style: const TextStyle(
-                  fontSize: 34,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 3,
-                  color: AppColors.espresso,
+              // code sits in a cream box with a caramel border so it stands out
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                decoration: BoxDecoration(
+                  color: AppColors.cream,
+                  borderRadius: BorderRadius.circular(AppTheme.buttonRadius),
+                  border: Border.all(color: AppColors.caramel, width: 1.5),
                 ),
+                // SelectableText = the owner can long press to copy it
+                child: SelectableText(
+                  code,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 3,
+                    color: AppColors.espresso,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Shown only once',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
           ),

@@ -48,6 +48,7 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
   @override
   Widget build(BuildContext context) {
     return PinScreenFrame(
+      icon: Icons.key_outlined,
       title: 'Forgot PIN',
       message:
           'Type the recovery code you saved when the PIN was made, '

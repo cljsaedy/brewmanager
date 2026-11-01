@@ -49,6 +49,7 @@ class _EnterPinScreenState extends State<EnterPinScreen> {
   @override
   Widget build(BuildContext context) {
     return PinScreenFrame(
+      icon: Icons.lock_outline,
       title: 'Owner PIN',
       message: 'Type the 4-digit owner PIN.',
       error: _error,
