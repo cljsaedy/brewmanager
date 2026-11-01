@@ -82,14 +82,4 @@ void main() {
     // day note is right before submit, 12 px gap
     expect(submit.left - dayNote.right, closeTo(12, 0.5));
   });
-
-  testWidgets('tapping Owner shows the step 1d message', (tester) async {
-    useTabletScreen(tester);
-    await tester.pumpWidget(const BrewManagerApp());
-
-    await tester.tap(find.text('Owner'));
-    await tester.pump();
-
-    expect(find.text('Owner section comes in step 1d'), findsOneWidget);
-  });
 }

@@ -1,0 +1,100 @@
+import 'package:sqflite/sqflite.dart';
+
+import '../security/pin_hasher.dart';
+
+// saves and checks the owner pin and recovery code in the app_settings table
+// only hashes + salts are saved, never the plain pin or code
+class OwnerPinStore {
+  OwnerPinStore(this._db);
+
+  final Database _db;
+
+  // key names of the rows in app_settings
+  static const String pinHashKey = 'pin_hash';
+  static const String pinSaltKey = 'pin_salt';
+  static const String recoveryHashKey = 'recovery_hash';
+  static const String recoverySaltKey = 'recovery_salt';
+
+  // true once a pin was set up
+  Future<bool> hasPin() async {
+    return await _read(pinHashKey) != null;
+  }
+
+  // saves a new pin and makes a new recovery code, gives back the plain code so the screen can show it once
+  // making a new code every time means an old code stops working after it was used
+  Future<String> setPin(String pin) async {
+    if (!PinHasher.isValidPin(pin)) {
+      throw ArgumentError('PIN must be ${PinHasher.pinLength} digits');
+    }
+
+    final pinSalt = PinHasher.newSalt();
+    final code = PinHasher.newRecoveryCode();
+    final codeSalt = PinHasher.newSalt();
+
+    // one transaction so all 4 rows save together, or none of them if something fails
+    // (a pin hash saved without its salt would lock the owner out)
+    await _db.transaction((txn) async {
+      await _write(txn, pinHashKey, PinHasher.hash(pin, pinSalt));
+      await _write(txn, pinSaltKey, pinSalt);
+      await _write(
+        txn,
+        recoveryHashKey,
+        PinHasher.hash(PinHasher.normalizeRecoveryCode(code), codeSalt),
+      );
+      await _write(txn, recoverySaltKey, codeSalt);
+    });
+
+    return code;
+  }
+
+  // true when the typed pin matches the saved one
+  Future<bool> checkPin(String pin) async {
+    return _matches(pin, hashKey: pinHashKey, saltKey: pinSaltKey);
+  }
+
+  // true when the typed recovery code matches the saved one (case, dash and spaces dont matter)
+  Future<bool> checkRecoveryCode(String code) async {
+    return _matches(
+      PinHasher.normalizeRecoveryCode(code),
+      hashKey: recoveryHashKey,
+      saltKey: recoverySaltKey,
+    );
+  }
+
+  // hashes the typed value with the saved salt and compares it with the saved hash
+  Future<bool> _matches(
+    String typed, {
+    required String hashKey,
+    required String saltKey,
+  }) async {
+    final savedHash = await _read(hashKey);
+    final salt = await _read(saltKey);
+    if (savedHash == null || salt == null) return false;
+    return PinHasher.hash(typed, salt) == savedHash;
+  }
+
+  // gets one value from app_settings, null if the key isnt there
+  Future<String?> _read(String key) async {
+    final rows = await _db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [key],
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['value'] as String?;
+  }
+
+  // saves one value, replaces the old row if the key already exists
+  // DatabaseExecutor = works with both the normal db and a transaction
+  static Future<void> _write(
+    DatabaseExecutor db,
+    String key,
+    String value,
+  ) async {
+    await db.insert('app_settings', {
+      'key': key,
+      'value': value,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+}
