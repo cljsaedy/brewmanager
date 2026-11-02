@@ -142,4 +142,194 @@ void main() {
     expect(find.text('Old syrup'), findsNothing);
     expect(find.text('No stock items yet'), findsOneWidget);
   });
+
+  group('add / edit panel', () {
+    // a normal container item to start tests with
+    const syrup = StockItem(
+      name: 'Caramel syrup',
+      category: 'Syrups',
+      baseUnit: BaseUnit.ml,
+      countType: CountType.container,
+      containerLabel: 'bottle',
+      containerSize: 2000,
+      lowMode: LowMode.containers,
+      lowValue: 1,
+    );
+
+    // scrolls the panel to a box and types in it
+    Future<void> fill(WidgetTester tester, String key, String value) async {
+      final box = find.byKey(Key(key));
+      await tester.ensureVisible(box);
+      await tester.pumpAndSettle();
+      await tester.enterText(box, value);
+      await tester.pump();
+    }
+
+    Future<void> tapSave(WidgetTester tester) async {
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> openAdd(WidgetTester tester) async {
+      await openStockItems(tester);
+      await tester.tap(find.text('Add item'));
+      await tester.pumpAndSettle();
+      expect(find.text('Add stock item'), findsOneWidget);
+    }
+
+    testWidgets('adds a container item, size typed in L is saved in ml', (
+      tester,
+    ) async {
+      await openAdd(tester);
+
+      await fill(tester, 'name_field', 'Caramel syrup');
+      await fill(tester, 'category_field', 'Syrups');
+      await fill(tester, 'label_field', 'bottle');
+      await fill(tester, 'size_field', '2');
+
+      // pick L in the size unit picker
+      await tester.tap(find.byKey(const Key('size_unit')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('L').last);
+      await tester.pumpAndSettle();
+      expect(find.text('= 2,000 ml'), findsOneWidget);
+
+      await fill(tester, 'low_field', '1');
+      await tapSave(tester);
+
+      // panel closed, full table back with the new row
+      expect(find.text('Add stock item'), findsNothing);
+      expect(find.text('Saved Caramel syrup.'), findsOneWidget);
+      expect(find.text('bottle · 2,000 ml'), findsOneWidget);
+      expect(find.text('1 bottle'), findsOneWidget);
+
+      final saved = await tester.runAsync(
+        () => store.findByName('Caramel syrup'),
+      );
+      expect(saved!.containerSize, 2000);
+    });
+
+    testWidgets('number items are pcs with an exact low level', (tester) async {
+      await openAdd(tester);
+
+      await tester.tap(find.text('Number'));
+      await tester.pumpAndSettle();
+      // no container boxes for number items
+      expect(find.byKey(const Key('label_field')), findsNothing);
+      expect(find.byKey(const Key('size_field')), findsNothing);
+
+      await fill(tester, 'name_field', 'Fries pack');
+      await fill(tester, 'category_field', 'Food');
+      await fill(tester, 'low_field', '5');
+      await tapSave(tester);
+
+      expect(find.text('Fries pack'), findsOneWidget);
+      expect(find.text('5 pcs'), findsOneWidget);
+      final saved = await tester.runAsync(() => store.findByName('Fries pack'));
+      expect(saved!.baseUnit, BaseUnit.pcs);
+      expect(saved.lowMode, LowMode.exact);
+    });
+
+    testWidgets('saving with a broken rule shows the problem', (tester) async {
+      await openAdd(tester);
+      await tapSave(tester);
+
+      expect(find.text('Type the container size as a number.'), findsOneWidget);
+
+      await fill(tester, 'size_field', '750');
+      await tapSave(tester);
+      expect(find.text('Type a name.'), findsOneWidget);
+      // still on the panel, nothing saved
+      expect(find.text('Add stock item'), findsOneWidget);
+    });
+
+    testWidgets('a name of an archived item offers restore', (tester) async {
+      await addItems(tester, [syrup]);
+      await tester.runAsync(() async {
+        final id = (await store.findByName('Caramel syrup'))!.id!;
+        await store.archive(id);
+      });
+      await openAdd(tester);
+
+      await fill(tester, 'name_field', 'caramel SYRUP');
+      await fill(tester, 'category_field', 'Syrups');
+      await fill(tester, 'label_field', 'bottle');
+      await fill(tester, 'size_field', '1000');
+      await tapSave(tester);
+
+      final restore = find.text('Restore it');
+      await tester.ensureVisible(restore);
+      await tester.pumpAndSettle();
+      await tester.tap(restore);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Restored Caramel syrup.'), findsOneWidget);
+      // back with its old settings, not the 1000 typed
+      expect(find.text('bottle · 2,000 ml'), findsOneWidget);
+    });
+
+    testWidgets('tapping a row edits it', (tester) async {
+      await addItems(tester, [syrup]);
+      await openStockItems(tester);
+
+      await tester.tap(find.text('Caramel syrup'));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit stock item'), findsOneWidget);
+
+      await fill(tester, 'name_field', 'Caramel sauce');
+      await tapSave(tester);
+
+      expect(find.text('Caramel sauce'), findsOneWidget);
+      expect(find.text('Caramel syrup'), findsNothing);
+    });
+
+    testWidgets('a used item shows unit and count type locked', (tester) async {
+      await addItems(tester, [syrup]);
+      // put it in a recipe so it counts as used
+      await tester.runAsync(() async {
+        final id = (await store.findByName('Caramel syrup'))!.id!;
+        final menuId = await db.insert('menu_items', {
+          'name': 'Caramel latte',
+          'category': 'Coffee',
+        });
+        final sizeId = await db.insert('menu_sizes', {
+          'menu_item_id': menuId,
+          'label': 'Large',
+        });
+        await db.insert('recipe_lines', {
+          'menu_size_id': sizeId,
+          'stock_item_id': id,
+          'amount': 30,
+          'created_at': DateTime.utc(2026, 11, 1).toIso8601String(),
+        });
+      });
+      await openStockItems(tester);
+
+      await tester.tap(find.text('Caramel syrup'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('Unit and count type are locked'),
+        findsOneWidget,
+      );
+      // SegmentedButton with no onSelectionChanged = greyed out
+      final unitButtons = tester.widget<SegmentedButton<BaseUnit>>(
+        find.byType(SegmentedButton<BaseUnit>),
+      );
+      expect(unitButtons.onSelectionChanged, isNull);
+    });
+
+    testWidgets('category chips fill the category box', (tester) async {
+      await addItems(tester, [syrup]);
+      await openAdd(tester);
+
+      await tester.tap(find.widgetWithText(ActionChip, 'Syrups'));
+      await tester.pump();
+
+      final box = tester.widget<TextField>(
+        find.byKey(const Key('category_field')),
+      );
+      expect(box.controller!.text, 'Syrups');
+    });
+  });
 }

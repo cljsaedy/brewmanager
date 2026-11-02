@@ -1,5 +1,11 @@
 import '../logic/units.dart';
 
+// category saved when the owner leaves the category box empty
+const String defaultCategory = 'Other';
+
+// word shown when a container item has no container name typed, like "2 containers"
+const String defaultContainerLabel = 'container';
+
 // one row of the stock_items table
 class StockItem {
   const StockItem({
@@ -18,11 +24,11 @@ class StockItem {
   // null for a new item that is not saved yet, the db gives the id
   final int? id;
   final String name;
-  // like 'Syrups' or 'Cups', typed by the owner
+  // like 'Syrups' or 'Cups', typed by the owner, empty gets saved as 'Other'
   final String category;
   final BaseUnit baseUnit;
   final CountType countType;
-  // like 'bottle' or 'pack', only for container items
+  // like 'bottle' or 'pack', only for container items, optional (null = not typed)
   final String? containerLabel;
   // how much 1 full container holds in the base unit, like 2000 (ml), only for container items
   final double? containerSize;
@@ -30,6 +36,12 @@ class StockItem {
   // the low-stock level, in containers or in base units depending on lowMode
   final double lowValue;
   final bool isArchived;
+
+  // the container word to show on screens, 'container' when the owner left it empty
+  String get containerName {
+    final label = containerLabel?.trim() ?? '';
+    return label.isEmpty ? defaultContainerLabel : label;
+  }
 
   // makes a StockItem from a db row
   // values.byName('g') = finds the enum value with that name
@@ -51,14 +63,19 @@ class StockItem {
 
   // turns this item into a row for the db (id and is_archived are left out, the store handles those)
   // number items never keep a container label or size
+  // empty category is saved as 'Other', empty container label is saved as null
   Map<String, Object?> toRow() {
     final isContainer = countType == CountType.container;
+    final cleanCategory = category.trim();
+    final cleanLabel = containerLabel?.trim() ?? '';
     return {
       'name': name.trim(),
-      'category': category.trim(),
+      'category': cleanCategory.isEmpty ? defaultCategory : cleanCategory,
       'base_unit': baseUnit.name,
       'count_type': countType.name,
-      'container_label': isContainer ? containerLabel?.trim() : null,
+      'container_label': isContainer && cleanLabel.isNotEmpty
+          ? cleanLabel
+          : null,
       'container_size': isContainer ? containerSize : null,
       'low_mode': lowMode.name,
       'low_value': lowValue,
@@ -94,8 +111,8 @@ class StockItem {
 // checks the stock item rules, gives back the first problem in plain words, or null if all good
 // the store uses it before saving and the form uses it to show the message
 String? stockItemProblem(StockItem item) {
+  // category can be empty, toRow saves it as 'Other'
   if (item.name.trim().isEmpty) return 'Type a name.';
-  if (item.category.trim().isEmpty) return 'Type a category.';
 
   if (item.countType == CountType.number) {
     // number items are whole pieces only (fries packs, wings, gloves)
@@ -107,10 +124,7 @@ String? stockItemProblem(StockItem item) {
       return 'Number items need an exact low-stock level.';
     }
   } else {
-    final label = item.containerLabel?.trim() ?? '';
-    if (label.isEmpty) {
-      return 'Type what the container is, like bottle or pack.';
-    }
+    // container label can be empty, screens show 'container' then
     final size = item.containerSize;
     if (size == null || size <= 0) {
       return 'Container size must be more than 0.';

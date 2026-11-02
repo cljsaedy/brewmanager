@@ -111,19 +111,27 @@ void main() {
   });
 
   group('rules', () {
-    test('name and category cannot be empty', () async {
+    test('name cannot be empty', () async {
       await expectProblem(() => store.add(syrup(name: '   ')), 'Type a name.');
-      await expectProblem(
-        () => store.add(syrup(category: '')),
-        'Type a category.',
-      );
     });
 
-    test('container items need a label and a size above 0', () async {
-      await expectProblem(
-        () => store.add(syrup().copyWith(containerLabel: ' ')),
-        'Type what the container is, like bottle or pack.',
-      );
+    test('empty category is saved as Other', () async {
+      await store.add(syrup(category: '  '));
+      final item = await store.findByName('Caramel syrup');
+      expect(item!.category, 'Other');
+    });
+
+    test(
+      'empty container label is saved as null and shows container',
+      () async {
+        await store.add(syrup().copyWith(containerLabel: ' '));
+        final item = await store.findByName('Caramel syrup');
+        expect(item!.containerLabel, isNull);
+        expect(item.containerName, 'container');
+      },
+    );
+
+    test('container items need a size above 0', () async {
       await expectProblem(
         () => store.add(syrup().copyWith(containerSize: 0)),
         'Container size must be more than 0.',

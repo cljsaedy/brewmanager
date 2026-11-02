@@ -48,59 +48,75 @@ class SideRail extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppTheme.cardRadius),
         border: Border.all(color: AppColors.divider),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // app name at the top, in place of the logo from the ui reference
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8),
-            child: Text(
-              'BrewManager',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppColors.espresso,
-              ),
-            ),
+      // when the keyboard pops up the rail gets shorter than its buttons,
+      // so it scrolls instead of showing the "bottom overflowed" stripes
+      // LayoutBuilder = gives the rail height, minHeight + IntrinsicHeight keep the
+      // bottom button at the bottom when there is enough room
+      child: LayoutBuilder(
+        builder: (context, box) => SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: box.maxHeight),
+            child: IntrinsicHeight(child: _buttons()),
           ),
-          if (subtitle != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 2, 8, 0),
-              child: Text(
-                subtitle!,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.caramel,
-                ),
-              ),
-            ),
-          const SizedBox(height: 28),
-
-          // one button per tab, loop with the index so we know which one is selected
-          for (int i = 0; i < items.length; i++)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: _RailButton(
-                icon: items[i].icon,
-                label: items[i].label,
-                selected: i == selectedIndex,
-                onTap: () => onSelect(i),
-              ),
-            ),
-
-          // pushes the bottom button all the way down
-          const Spacer(),
-          const Divider(),
-          const SizedBox(height: 8),
-          _RailButton(
-            icon: bottomItem.icon,
-            label: bottomItem.label,
-            selected: false,
-            onTap: onBottomTap,
-          ),
-        ],
+        ),
       ),
+    );
+  }
+
+  // app name, the tab buttons, then the bottom button
+  Widget _buttons() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // app name at the top, in place of the logo from the ui reference
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 8),
+          child: Text(
+            'BrewManager',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: AppColors.espresso,
+            ),
+          ),
+        ),
+        if (subtitle != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 2, 8, 0),
+            child: Text(
+              subtitle!,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.caramel,
+              ),
+            ),
+          ),
+        const SizedBox(height: 28),
+
+        // one button per tab, loop with the index so we know which one is selected
+        for (int i = 0; i < items.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: _RailButton(
+              icon: items[i].icon,
+              label: items[i].label,
+              selected: i == selectedIndex,
+              onTap: () => onSelect(i),
+            ),
+          ),
+
+        // pushes the bottom button all the way down
+        const Spacer(),
+        const Divider(),
+        const SizedBox(height: 8),
+        _RailButton(
+          icon: bottomItem.icon,
+          label: bottomItem.label,
+          selected: false,
+          onTap: onBottomTap,
+        ),
+      ],
     );
   }
 }

@@ -56,6 +56,20 @@ void main() {
     expect(dayNote.enabled, isFalse);
   });
 
+  testWidgets('rail does not overflow when the keyboard is open', (
+    tester,
+  ) async {
+    useTabletScreen(tester);
+    // keyboard takes about half the screen, the scaffold shrinks the body by this much
+    tester.view.viewInsets = const FakeViewPadding(bottom: 400);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pumpWidget(const BrewManagerApp());
+
+    // an overflow would show up here as a flutter error
+    expect(tester.takeException(), isNull);
+    expect(find.text('Owner'), findsOneWidget);
+  });
+
   testWidgets('Day Note and Submit sit on the right of the top bar', (
     tester,
   ) async {
