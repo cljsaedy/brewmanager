@@ -4,6 +4,7 @@ import '../data/database_helper.dart';
 import '../data/owner_pin_store.dart';
 import '../owner/create_pin_screen.dart';
 import '../owner/enter_pin_screen.dart';
+import '../widgets/placeholder_tab.dart';
 import 'side_rail.dart';
 import 'top_bar.dart';
 
@@ -79,7 +80,11 @@ class _AppLayoutState extends State<AppLayout> {
               items: _tabs,
               selectedIndex: _selectedIndex,
               onSelect: _selectTab,
-              onOwnerTap: _openOwner,
+              bottomItem: const RailItem(
+                icon: Icons.lock_outline,
+                label: 'Owner',
+              ),
+              onBottomTap: _openOwner,
             ),
             // Expanded = take up all the space left of the rail
             Expanded(
@@ -97,15 +102,15 @@ class _AppLayoutState extends State<AppLayout> {
                       child: IndexedStack(
                         index: _selectedIndex,
                         children: const [
-                          _PlaceholderTab(
+                          PlaceholderTab(
                             title: 'Count tab',
                             note: 'The logbook table comes in Feature 4.',
                           ),
-                          _PlaceholderTab(
+                          PlaceholderTab(
                             title: 'Tally tab',
                             note: 'The menu grid comes in Feature 5.',
                           ),
-                          _PlaceholderTab(
+                          PlaceholderTab(
                             title: 'History tab',
                             note: 'Submitted days come in Feature 8.',
                           ),
@@ -116,32 +121,6 @@ class _AppLayoutState extends State<AppLayout> {
                 ],
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// temporary empty card for tabs that are not built yet
-class _PlaceholderTab extends StatelessWidget {
-  const _PlaceholderTab({required this.title, required this.note});
-
-  final String title;
-  final String note;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-
-    return Card(
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(title, style: text.headlineSmall),
-            const SizedBox(height: 6),
-            Text(note, style: text.bodySmall),
           ],
         ),
       ),

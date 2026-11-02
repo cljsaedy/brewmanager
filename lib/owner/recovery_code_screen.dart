@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sqflite/sqflite.dart';
 
 import '../theme/app_theme.dart';
 import 'owner_section_screen.dart';
@@ -6,10 +7,12 @@ import 'pin_screen_frame.dart';
 
 // shows the new recovery code once, the owner has to write it down or screenshot it
 class RecoveryCodeScreen extends StatelessWidget {
-  const RecoveryCodeScreen({super.key, required this.code});
+  const RecoveryCodeScreen({super.key, required this.code, required this.db});
 
   // the plain code, only lives in memory while this screen is open
   final String code;
+  // passed on to the owner section after "I saved it"
+  final Database db;
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +31,7 @@ class RecoveryCodeScreen extends StatelessWidget {
           FilledButton(
             onPressed: () {
               Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const OwnerSectionScreen()),
+                MaterialPageRoute(builder: (_) => OwnerSectionScreen(db: db)),
               );
             },
             child: const Text('I saved it'),

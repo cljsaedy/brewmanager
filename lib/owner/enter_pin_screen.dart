@@ -29,7 +29,9 @@ class _EnterPinScreenState extends State<EnterPinScreen> {
     if (ok) {
       // swap to the owner section, so back from there goes straight to the barista side
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const OwnerSectionScreen()),
+        MaterialPageRoute(
+          builder: (_) => OwnerSectionScreen(db: widget.store.db),
+        ),
       );
     } else {
       // no lockout, just let them try again

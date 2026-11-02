@@ -49,7 +49,9 @@ class _CreatePinScreenState extends State<CreatePinScreen> {
     if (!mounted) return;
     // pushReplacement = swap this screen for the next one, so back doesnt return here
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => RecoveryCodeScreen(code: code)),
+      MaterialPageRoute(
+        builder: (_) => RecoveryCodeScreen(code: code, db: widget.store.db),
+      ),
     );
   }
 

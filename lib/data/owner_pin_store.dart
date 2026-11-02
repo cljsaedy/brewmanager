@@ -9,6 +9,9 @@ class OwnerPinStore {
 
   final Database _db;
 
+  // the db this store uses, the pin screens pass it on to the owner section after unlocking
+  Database get db => _db;
+
   // key names of the rows in app_settings
   static const String pinHashKey = 'pin_hash';
   static const String pinSaltKey = 'pin_salt';

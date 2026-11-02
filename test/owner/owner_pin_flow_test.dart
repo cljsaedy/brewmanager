@@ -78,7 +78,7 @@ void main() {
 
       await tester.tap(find.text('I saved it'));
       await tester.pumpAndSettle();
-      expect(find.text('Owner section'), findsOneWidget);
+      expect(find.text('Lock and exit'), findsOneWidget);
       // barista top bar is hidden in the owner section
       expect(find.text('Submit'), findsNothing);
 
@@ -127,7 +127,7 @@ void main() {
     expect(find.text('Wrong PIN. Try again.'), findsOneWidget);
 
     await typePin(tester, '1234');
-    expect(find.text('Owner section'), findsOneWidget);
+    expect(find.text('Lock and exit'), findsOneWidget);
   });
 
   testWidgets('back button locks the owner section', (tester) async {
@@ -152,7 +152,7 @@ void main() {
     await openApp(tester);
     await tapOwner(tester);
     await typePin(tester, '1234');
-    expect(find.text('Owner section'), findsOneWidget);
+    expect(find.text('Lock and exit'), findsOneWidget);
 
     // same as pressing home: the app goes inactive, then hidden
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
@@ -164,7 +164,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Count tab'), findsOneWidget);
-    expect(find.text('Owner section'), findsNothing);
+    expect(find.text('Lock and exit'), findsNothing);
   });
 
   testWidgets('forgot pin: recovery code lets the owner make a new pin', (

@@ -10,14 +10,17 @@ class RailItem {
   final String label;
 }
 
-// the white panel on the left with the app name, the tabs, and the owner lock at the bottom
+// the white panel on the left with the app name, the tabs, and one button at the bottom
+// barista side: bottom button is the owner lock, owner side: bottom button is lock and exit
 class SideRail extends StatelessWidget {
   const SideRail({
     super.key,
     required this.items,
     required this.selectedIndex,
     required this.onSelect,
-    required this.onOwnerTap,
+    required this.bottomItem,
+    required this.onBottomTap,
+    this.subtitle,
   });
 
   final List<RailItem> items;
@@ -25,8 +28,11 @@ class SideRail extends StatelessWidget {
   final int selectedIndex;
   // called with the tab number when a tab is tapped
   final ValueChanged<int> onSelect;
-  // called when the owner lock at the bottom is tapped
-  final VoidCallback onOwnerTap;
+  // the button stuck at the bottom of the rail, and what happens when it is tapped
+  final RailItem bottomItem;
+  final VoidCallback onBottomTap;
+  // small text under the app name, like 'Owner', null shows nothing
+  final String? subtitle;
 
   // rail width, kept small since the tablet screen is narrow
   static const double width = 180;
@@ -57,6 +63,18 @@ class SideRail extends StatelessWidget {
               ),
             ),
           ),
+          if (subtitle != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 2, 8, 0),
+              child: Text(
+                subtitle!,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.caramel,
+                ),
+              ),
+            ),
           const SizedBox(height: 28),
 
           // one button per tab, loop with the index so we know which one is selected
@@ -71,15 +89,15 @@ class SideRail extends StatelessWidget {
               ),
             ),
 
-          // pushes the owner button all the way to the bottom
+          // pushes the bottom button all the way down
           const Spacer(),
           const Divider(),
           const SizedBox(height: 8),
           _RailButton(
-            icon: Icons.lock_outline,
-            label: 'Owner',
+            icon: bottomItem.icon,
+            label: bottomItem.label,
             selected: false,
-            onTap: onOwnerTap,
+            onTap: onBottomTap,
           ),
         ],
       ),
