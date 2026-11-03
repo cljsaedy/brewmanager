@@ -42,9 +42,11 @@ class StockItemStore {
   }
 
   // categories already used by active items, for the suggestions in the form
+  // GROUP BY ... COLLATE NOCASE = "Syrups" and "syrups" come back once, like the list groups them
   Future<List<String>> categories() async {
     final rows = await _db.rawQuery(
-      'SELECT DISTINCT category FROM stock_items WHERE is_archived = 0 '
+      'SELECT category FROM stock_items WHERE is_archived = 0 '
+      'GROUP BY category COLLATE NOCASE '
       'ORDER BY category COLLATE NOCASE',
     );
     return rows.map((row) => row['category'] as String).toList();

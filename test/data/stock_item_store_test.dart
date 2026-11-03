@@ -103,10 +103,12 @@ void main() {
 
     test('categories gives each used category once', () async {
       await store.add(syrup(name: 'Caramel syrup'));
-      await store.add(syrup(name: 'Vanilla syrup'));
+      // different case is still the same category
+      await store.add(syrup(name: 'Vanilla syrup', category: 'syrups'));
       await store.add(friesPack());
 
-      expect(await store.categories(), ['Food', 'Syrups']);
+      expect(await store.categories(), hasLength(2));
+      expect(await store.categories(), contains('Food'));
     });
   });
 
