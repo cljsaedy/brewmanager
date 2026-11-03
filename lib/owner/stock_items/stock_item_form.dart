@@ -4,7 +4,7 @@ import '../../data/stock_item.dart';
 import '../../data/stock_item_store.dart';
 import '../../logic/formatting.dart';
 import '../../logic/units.dart';
-import '../../theme/app_theme.dart';
+import '../../widgets/message_box.dart';
 
 // the right side panel for adding a new stock item or editing one
 // item null = adding a new one
@@ -73,9 +73,9 @@ class _StockItemFormState extends State<StockItemForm> {
     _sizeUnit = _baseInputUnit(_baseUnit);
     _lowUnit = _baseInputUnit(_baseUnit);
     if (item.containerSize != null) {
-      _sizeController.text = _plainNumber(item.containerSize!);
+      _sizeController.text = plainNumber(item.containerSize!);
     }
-    _lowController.text = _plainNumber(item.lowValue);
+    _lowController.text = plainNumber(item.lowValue);
     _checkLocked(item.id!);
   }
 
@@ -98,19 +98,6 @@ class _StockItemFormState extends State<StockItemForm> {
 
   // the input unit that is the base unit itself, like ml for ml
   static InputUnit _baseInputUnit(BaseUnit base) => inputUnitsFor(base).first;
-
-  // number for a text box without commas or rounding, so saving again doesnt change it
-  // like 2000.0 -> "2000", 29.5735 -> "29.5735"
-  static String _plainNumber(double value) {
-    return value == value.roundToDouble()
-        ? value.toInt().toString()
-        : value.toString();
-  }
-
-  // reads a typed number, commas allowed ("2,000"), null if it isnt a number
-  static double? _readNumber(String text) {
-    return double.tryParse(text.trim().replaceAll(',', ''));
-  }
 
   void _setCountType(CountType type) {
     setState(() {
@@ -139,7 +126,7 @@ class _StockItemFormState extends State<StockItemForm> {
   StockItem? _buildItem() {
     double? containerSize;
     if (_isContainer) {
-      final typed = _readNumber(_sizeController.text);
+      final typed = readNumber(_sizeController.text);
       if (typed == null) {
         setState(() => _error = 'Type the container size as a number.');
         return null;
@@ -150,7 +137,7 @@ class _StockItemFormState extends State<StockItemForm> {
 
     // empty low level box means 0 (never marked restock)
     final lowText = _lowController.text.trim();
-    final lowTyped = lowText.isEmpty ? 0.0 : _readNumber(lowText);
+    final lowTyped = lowText.isEmpty ? 0.0 : readNumber(lowText);
     if (lowTyped == null) {
       setState(() => _error = 'Type the low-stock level as a number.');
       return null;
@@ -342,7 +329,7 @@ class _StockItemFormState extends State<StockItemForm> {
           if (_error != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: _Message(text: _error!, isError: true),
+              child: MessageBox(text: _error!, isError: true),
             ),
           if (_archivedMatch != null)
             Padding(
@@ -456,7 +443,7 @@ class _StockItemFormState extends State<StockItemForm> {
   // container label + size (only for container items)
   Widget _containerFields(TextTheme text) {
     // shows the size in the base unit when typed in another unit, like "= 2,000 ml"
-    final typed = _readNumber(_sizeController.text);
+    final typed = readNumber(_sizeController.text);
     final showsBase = typed != null && _sizeUnit.factor != 1;
 
     return Column(
@@ -543,7 +530,7 @@ class _StockItemFormState extends State<StockItemForm> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Message(
+        MessageBox(
           text:
               '"${match.name}" is an archived item. Restore it with its old '
               'settings instead of adding a new one?',
@@ -623,43 +610,6 @@ class _AmountField extends StatelessWidget {
           ),
         ],
       ],
-    );
-  }
-}
-
-// red error box or yellow notice box
-class _Message extends StatelessWidget {
-  const _Message({required this.text, required this.isError});
-
-  final String text;
-  final bool isError;
-
-  @override
-  Widget build(BuildContext context) {
-    final fg = isError ? AppColors.errorText : AppColors.warnText;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: isError ? AppColors.errorBg : AppColors.warnBg,
-        borderRadius: BorderRadius.circular(AppTheme.buttonRadius),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            isError ? Icons.error_outline : Icons.info_outline,
-            color: fg,
-            size: 18,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(color: fg, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

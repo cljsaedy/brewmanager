@@ -118,6 +118,18 @@ class MenuItemStore {
     return rows.first['n'] as int;
   }
 
+  // active recipe line count of every menu item that has at least one, as {menu item id: count}
+  // one query for the whole table, items missing from the map have no recipe yet
+  Future<Map<int, int>> lineCounts() async {
+    final rows = await _db.rawQuery(
+      'SELECT menu_item_id, COUNT(*) AS n FROM recipe_lines '
+      'WHERE is_archived = 0 GROUP BY menu_item_id',
+    );
+    return {
+      for (final row in rows) row['menu_item_id'] as int: row['n'] as int,
+    };
+  }
+
   // hides the item from the tally and setup lists, it stays in the db for old reports
   // its active recipe lines get archived too, with the exact same time as the item (rule 12),
   // that time is how restore finds them again

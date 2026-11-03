@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../data/menu_item_store.dart';
 import '../data/stock_item_store.dart';
 import '../layout/side_rail.dart';
 import '../widgets/placeholder_tab.dart';
+import 'menu/menu_tab.dart';
 import 'stock_items/stock_items_tab.dart';
 
 // owner side, only reachable through the pin
@@ -34,6 +36,7 @@ class _OwnerSectionScreenState extends State<OwnerSectionScreen> {
 
   // made once here so it isnt remade every time the screen redraws
   late final StockItemStore _stockStore = StockItemStore(widget.db);
+  late final MenuItemStore _menuStore = MenuItemStore(widget.db);
 
   // listens for the app going to the background
   late final AppLifecycleListener _lifecycle;
@@ -91,10 +94,7 @@ class _OwnerSectionScreenState extends State<OwnerSectionScreen> {
                       title: 'Reports',
                       note: 'Sent reports come in Feature 10.',
                     ),
-                    const PlaceholderTab(
-                      title: 'Menu & Recipes',
-                      note: 'Menu items, sizes and recipes come in Feature 3.',
-                    ),
+                    MenuTab(store: _menuStore),
                     StockItemsTab(store: _stockStore),
                     const PlaceholderTab(
                       title: 'Settings',

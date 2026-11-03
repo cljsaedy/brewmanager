@@ -28,3 +28,16 @@ String pluralOf(String word) {
   }
   return '${word}s';
 }
+
+// number for a text box without commas or rounding, so saving again doesnt change it
+// like 2000.0 -> "2000", 29.5735 -> "29.5735"
+String plainNumber(double value) {
+  return value == value.roundToDouble()
+      ? value.toInt().toString()
+      : value.toString();
+}
+
+// reads a typed number, commas allowed ("2,000"), null if it isnt a number
+double? readNumber(String text) {
+  return double.tryParse(text.trim().replaceAll(',', ''));
+}

@@ -101,6 +101,24 @@ void main() {
       expect(names, ['Americano', 'mocha', 'French Fries']);
       expect(await store.categories(), hasLength(2));
     });
+
+    test('lineCounts counts only active lines per item', () async {
+      final latte = await store.add(
+        const MenuItem(name: 'Latte (Large)', category: 'Coffee'),
+      );
+      final tea = await store.add(
+        const MenuItem(name: 'Hot tea', category: 'Tea'),
+      );
+      final milk = await addStock('Whole milk');
+      final cream = await addStock('Cream');
+      await recipes.addLine(latte, milk, 150);
+      final creamLine = await recipes.addLine(latte, cream, 20);
+      await recipes.addLine(tea, milk, 30);
+      // removed lines are archived, they dont count
+      await recipes.removeLine(creamLine);
+
+      expect(await store.lineCounts(), {latte: 1, tea: 1});
+    });
   });
 
   group('rules', () {

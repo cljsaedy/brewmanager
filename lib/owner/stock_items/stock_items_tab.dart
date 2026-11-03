@@ -5,6 +5,7 @@ import '../../data/stock_item_store.dart';
 import '../../logic/formatting.dart';
 import '../../logic/units.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/category_title.dart';
 import 'archived_item_panel.dart';
 import 'stock_item_form.dart';
 
@@ -299,7 +300,7 @@ class _StockItemsTabState extends State<StockItemsTab> {
       // compare in lowercase so "Syrups" and "syrups" end up in one group
       final category = item.category.toLowerCase();
       if (category != lastCategory) {
-        rows.add(_CategoryTitle(item.category));
+        rows.add(CategoryTitle(item.category));
         lastCategory = category;
       }
       rows.add(_row(item));
@@ -372,29 +373,6 @@ class _StockItemsTabState extends State<StockItemsTab> {
               ],
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-// small caramel title above each category group, like "SYRUPS"
-class _CategoryTitle extends StatelessWidget {
-  const _CategoryTitle(this.category);
-
-  final String category;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 18, 12, 6),
-      child: Text(
-        category.toUpperCase(),
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.1,
-          color: AppColors.caramel,
         ),
       ),
     );
