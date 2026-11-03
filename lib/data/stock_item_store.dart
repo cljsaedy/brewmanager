@@ -122,8 +122,48 @@ class StockItemStore {
     return rows.first['used'] == 1;
   }
 
+  // gives back why the item cant be archived, or null if it can (rule 12)
+  // blocked while any active recipe line uses it, so recipes never point to a hidden item
+  // archived recipe lines dont block it, they are only kept for old reports
+  Future<String?> archiveProblem(int id) async {
+    final item = await _get(id);
+    // the menu item + size of every active recipe line that uses this stock item
+    final rows = await _db.rawQuery(
+      '''
+      SELECT m.name AS menu_name, s.label AS size_label
+      FROM recipe_lines r
+      JOIN menu_sizes s ON s.id = r.menu_size_id
+      JOIN menu_items m ON m.id = s.menu_item_id
+      WHERE r.stock_item_id = ? AND r.is_archived = 0
+      ORDER BY m.name COLLATE NOCASE, s.sort_order, s.label COLLATE NOCASE
+      ''',
+      [id],
+    );
+    if (rows.isEmpty) return null;
+
+    // group the sizes under their menu item, like {'Caramel latte': ['Small', 'Large']}
+    // a map keeps the order the keys were added, so the sql order stays
+    final sizesByMenu = <String, List<String>>{};
+    for (final row in rows) {
+      final menu = row['menu_name'] as String;
+      sizesByMenu.putIfAbsent(menu, () => []).add(row['size_label'] as String);
+    }
+    // like "Caramel latte (Small, Large), Iced caramel (Regular)"
+    final usedIn = sizesByMenu.entries
+        .map((e) => '${e.key} (${e.value.join(', ')})')
+        .join(', ');
+
+    return "Can't archive ${item.name}. It's used in: $usedIn. "
+        'Remove or replace it in those recipes first.';
+  }
+
   // hides the item from the count and setup lists, it stays in the db for old reports
-  Future<void> archive(int id) => _setArchived(id, true);
+  // checks archiveProblem first so no screen can skip the recipe rule
+  Future<void> archive(int id) async {
+    final problem = await archiveProblem(id);
+    if (problem != null) throw StockItemException(problem);
+    await _setArchived(id, true);
+  }
 
   // brings an archived item back, with all its old settings
   Future<void> restore(int id) => _setArchived(id, false);

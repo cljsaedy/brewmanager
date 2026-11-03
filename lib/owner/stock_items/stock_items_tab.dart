@@ -5,10 +5,12 @@ import '../../data/stock_item_store.dart';
 import '../../logic/formatting.dart';
 import '../../logic/units.dart';
 import '../../theme/app_theme.dart';
+import 'archived_item_panel.dart';
 import 'stock_item_form.dart';
 
 // owner tab that lists every stock item in a table, grouped by category
-// add item or tapping a row opens the form panel on the right, archive / restore comes in 2d
+// add item or tapping a row opens the form panel on the right
+// the active / archived switch shows archived items, tapping one opens a read only panel with restore
 class StockItemsTab extends StatefulWidget {
   const StockItemsTab({super.key, required this.store});
 
@@ -28,6 +30,8 @@ class _StockItemsTabState extends State<StockItemsTab> {
   bool _panelOpen = false;
   // the item being edited, null = adding a new one
   StockItem? _editing;
+  // false = active items, true = archived items
+  bool _showArchived = false;
 
   // width of the form panel, the table gets the rest
   static const double _panelWidth = 340;
@@ -48,9 +52,10 @@ class _StockItemsTabState extends State<StockItemsTab> {
     _load();
   }
 
-  // reads the active items and categories from the db, then redraws
+  // reads the active (or archived) items and the categories from the db, then redraws
+  // categories always come from active items, they are only for the form chips
   Future<void> _load() async {
-    final items = await widget.store.list();
+    final items = await widget.store.list(archived: _showArchived);
     final categories = await widget.store.categories();
     // mounted = the tab is still on screen (the owner could have locked while loading)
     if (!mounted) return;
@@ -81,7 +86,19 @@ class _StockItemsTabState extends State<StockItemsTab> {
     });
   }
 
-  // after a save or restore: close the panel, show the message at the bottom, reload the list
+  // switching active / archived closes the panel and loads the other list
+  void _setShowArchived(bool archived) {
+    setState(() {
+      _showArchived = archived;
+      _panelOpen = false;
+      _editing = null;
+      // null = shows the loading circle until the other list is read
+      _items = null;
+    });
+    _load();
+  }
+
+  // after a save, archive or restore: close the panel, show the message at the bottom, reload the list
   void _onFormDone(String message) {
     _closePanel();
     ScaffoldMessenger.of(
@@ -98,20 +115,33 @@ class _StockItemsTabState extends State<StockItemsTab> {
         Expanded(child: _tableCard(context)),
         if (_panelOpen) ...[
           const SizedBox(width: 12),
-          SizedBox(
-            width: _panelWidth,
-            child: StockItemForm(
-              // a new key per item = the form starts fresh when another row is tapped
-              key: ValueKey(_editing?.id ?? 'new'),
-              store: widget.store,
-              item: _editing,
-              categories: _categories,
-              onDone: _onFormDone,
-              onCancel: _closePanel,
-            ),
-          ),
+          SizedBox(width: _panelWidth, child: _panel()),
         ],
       ],
+    );
+  }
+
+  // archived item = read only panel with restore, otherwise the add / edit form
+  Widget _panel() {
+    final editing = _editing;
+    if (editing != null && editing.isArchived) {
+      return ArchivedItemPanel(
+        // a new key per item = the panel starts fresh when another row is tapped
+        key: ValueKey('archived-${editing.id}'),
+        store: widget.store,
+        item: editing,
+        onDone: _onFormDone,
+        onCancel: _closePanel,
+      );
+    }
+    return StockItemForm(
+      // a new key per item = the form starts fresh when another row is tapped
+      key: ValueKey(editing?.id ?? 'new'),
+      store: widget.store,
+      item: editing,
+      categories: _categories,
+      onDone: _onFormDone,
+      onCancel: _closePanel,
     );
   }
 
@@ -138,10 +168,13 @@ class _StockItemsTabState extends State<StockItemsTab> {
     );
   }
 
-  // title, item count, and the add button
+  // title, item count, the active / archived switch, and the add button
   Widget _header(BuildContext context, List<StockItem>? items) {
     final text = Theme.of(context).textTheme;
     final count = items?.length ?? 0;
+    final countText = _showArchived
+        ? '$count archived'
+        : (count == 1 ? '1 item' : '$count items');
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 20, 12),
@@ -153,18 +186,30 @@ class _StockItemsTabState extends State<StockItemsTab> {
               children: [
                 Text('Stock Items', style: text.headlineSmall),
                 const SizedBox(height: 2),
-                Text(
-                  count == 1 ? '1 item' : '$count items',
-                  style: text.bodySmall,
-                ),
+                Text(countText, style: text.bodySmall),
               ],
             ),
           ),
-          FilledButton.icon(
-            onPressed: _openAdd,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Add item'),
-          ),
+          // the switch is hidden while the panel is open, the table is too narrow for it then
+          if (!_compact)
+            SegmentedButton<bool>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(value: false, label: Text('Active')),
+                ButtonSegment(value: true, label: Text('Archived')),
+              ],
+              selected: {_showArchived},
+              onSelectionChanged: (picked) => _setShowArchived(picked.first),
+            ),
+          // archived items cant be added, only restored
+          if (!_showArchived) ...[
+            const SizedBox(width: 10),
+            FilledButton.icon(
+              onPressed: _openAdd,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add item'),
+            ),
+          ],
         ],
       ),
     );
@@ -228,10 +273,15 @@ class _StockItemsTabState extends State<StockItemsTab> {
             color: AppColors.textMuted,
           ),
           const SizedBox(height: 10),
-          Text('No stock items yet', style: text.titleMedium),
+          Text(
+            _showArchived ? 'No archived items' : 'No stock items yet',
+            style: text.titleMedium,
+          ),
           const SizedBox(height: 4),
           Text(
-            'Add the things your cafe counts, like milk, syrups and cups.',
+            _showArchived
+                ? 'Items you archive show up here, so you can restore them.'
+                : 'Add the things your cafe counts, like milk, syrups and cups.',
             style: text.bodySmall,
           ),
         ],
@@ -298,7 +348,11 @@ class _StockItemsTabState extends State<StockItemsTab> {
                 child: Text(
                   item.name,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  // archived names are a bit greyed so the view looks different
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: item.isArchived ? AppColors.textMuted : null,
+                  ),
                 ),
               ),
               Expanded(flex: _unitFlex, child: Text(unit)),

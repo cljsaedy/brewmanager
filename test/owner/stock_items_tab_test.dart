@@ -319,6 +319,117 @@ void main() {
       expect(unitButtons.onSelectionChanged, isNull);
     });
 
+    testWidgets('adding has no archive button', (tester) async {
+      await openAdd(tester);
+      expect(find.widgetWithText(TextButton, 'Archive'), findsNothing);
+    });
+
+    testWidgets('archive asks first, then hides the row', (tester) async {
+      await addItems(tester, [syrup]);
+      await openStockItems(tester);
+      await tester.tap(find.text('Caramel syrup'));
+      await tester.pumpAndSettle();
+
+      // runAsync since the button reads the db before the dialog shows
+      await tester.runAsync(() async {
+        await tester.tap(find.widgetWithText(TextButton, 'Archive'));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+      await tester.pumpAndSettle();
+      expect(find.text('Archive Caramel syrup?'), findsOneWidget);
+
+      // the archive button inside the dialog
+      await tester.runAsync(() async {
+        await tester.tap(find.widgetWithText(FilledButton, 'Archive'));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+      await tester.pumpAndSettle();
+
+      expect(find.text('Archived Caramel syrup.'), findsOneWidget);
+      expect(find.text('No stock items yet'), findsOneWidget);
+    });
+
+    testWidgets('archive is blocked while a recipe uses the item', (
+      tester,
+    ) async {
+      await addItems(tester, [syrup]);
+      await tester.runAsync(() async {
+        final id = (await store.findByName('Caramel syrup'))!.id!;
+        final menuId = await db.insert('menu_items', {
+          'name': 'Caramel latte',
+          'category': 'Coffee',
+        });
+        final sizeId = await db.insert('menu_sizes', {
+          'menu_item_id': menuId,
+          'label': 'Large',
+        });
+        await db.insert('recipe_lines', {
+          'menu_size_id': sizeId,
+          'stock_item_id': id,
+          'amount': 30,
+          'created_at': DateTime.utc(2026, 11, 1).toIso8601String(),
+        });
+      });
+      await openStockItems(tester);
+      await tester.tap(find.text('Caramel syrup'));
+      await tester.pumpAndSettle();
+
+      await tester.runAsync(() async {
+        await tester.tap(find.widgetWithText(TextButton, 'Archive'));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining("Can't archive Caramel syrup. It's used in: "),
+        findsOneWidget,
+      );
+      // no dialog, still on the edit panel
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('Edit stock item'), findsOneWidget);
+    });
+
+    testWidgets('archived view shows the item, restore brings it back', (
+      tester,
+    ) async {
+      await addItems(tester, [syrup]);
+      await tester.runAsync(() async {
+        final id = (await store.findByName('Caramel syrup'))!.id!;
+        await store.archive(id);
+      });
+      await openStockItems(tester);
+      expect(find.text('No stock items yet'), findsOneWidget);
+
+      await tester.runAsync(() async {
+        await tester.tap(find.text('Archived'));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+      await tester.pumpAndSettle();
+      expect(find.text('1 archived'), findsOneWidget);
+      // no adding in the archived view
+      expect(find.text('Add item'), findsNothing);
+
+      await tester.tap(find.text('Caramel syrup'));
+      await tester.pumpAndSettle();
+      expect(find.text('Archived item'), findsOneWidget);
+      expect(find.text('Save'), findsNothing);
+
+      await tester.runAsync(() async {
+        await tester.tap(find.text('Restore'));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+      await tester.pumpAndSettle();
+      expect(find.text('Restored Caramel syrup.'), findsOneWidget);
+      expect(find.text('No archived items'), findsOneWidget);
+
+      await tester.runAsync(() async {
+        await tester.tap(find.text('Active'));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+      await tester.pumpAndSettle();
+      expect(find.text('Caramel syrup'), findsOneWidget);
+    });
+
     testWidgets('category chips fill the category box', (tester) async {
       await addItems(tester, [syrup]);
       await openAdd(tester);

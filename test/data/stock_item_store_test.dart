@@ -224,6 +224,61 @@ void main() {
       expect((await store.list()).single.id, id);
       expect(await store.list(archived: true), isEmpty);
     });
+
+    // adds a menu item with these sizes, each size with a recipe line using the stock item
+    // archived = true puts in archived recipe lines (old amounts kept for reports)
+    Future<void> addRecipes(
+      int stockItemId,
+      String menuName,
+      List<String> sizes, {
+      bool archived = false,
+    }) async {
+      final menuId = await db.insert('menu_items', {
+        'name': menuName,
+        'category': 'Coffee',
+      });
+      for (var i = 0; i < sizes.length; i++) {
+        final sizeId = await db.insert('menu_sizes', {
+          'menu_item_id': menuId,
+          'label': sizes[i],
+          'sort_order': i,
+        });
+        await db.insert('recipe_lines', {
+          'menu_size_id': sizeId,
+          'stock_item_id': stockItemId,
+          'amount': 30,
+          'created_at': DateTime.utc(2026, 11, 1).toIso8601String(),
+          'is_archived': archived ? 1 : 0,
+          'archived_at': archived
+              ? DateTime.utc(2026, 11, 2).toIso8601String()
+              : null,
+        });
+      }
+    }
+
+    test('cannot archive while an active recipe uses it', () async {
+      final id = await store.add(syrup());
+      await addRecipes(id, 'Iced caramel', ['Regular']);
+      await addRecipes(id, 'Caramel latte', ['Small', 'Large']);
+
+      const message =
+          "Can't archive Caramel syrup. It's used in: "
+          'Caramel latte (Small, Large), Iced caramel (Regular). '
+          'Remove or replace it in those recipes first.';
+      expect(await store.archiveProblem(id), message);
+      await expectProblem(() => store.archive(id), message);
+      // still active
+      expect((await store.list()).single.id, id);
+    });
+
+    test('archived recipe lines do not block archiving', () async {
+      final id = await store.add(syrup());
+      await addRecipes(id, 'Caramel latte', ['Large'], archived: true);
+
+      expect(await store.archiveProblem(id), isNull);
+      await store.archive(id);
+      expect(await store.list(), isEmpty);
+    });
   });
 
   group('lock after first use', () {

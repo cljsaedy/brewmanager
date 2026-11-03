@@ -214,6 +214,59 @@ class _StockItemFormState extends State<StockItemForm> {
     }
   }
 
+  // archive button: check the recipe rule first, then ask, then archive
+  Future<void> _archive() async {
+    if (_saving) return;
+    final item = widget.item!;
+    setState(() {
+      _error = null;
+      _archivedMatch = null;
+    });
+
+    // used in an active recipe = show why in the red box, no dialog
+    final problem = await widget.store.archiveProblem(item.id!);
+    if (!mounted) return;
+    if (problem != null) {
+      setState(() => _error = problem);
+      return;
+    }
+
+    // showDialog waits until the owner taps a button, true = archive
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Archive ${item.name}?'),
+        content: const Text(
+          'It will be hidden from the list and from new counts. Past counts '
+          'and reports keep it. You can restore it later.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Archive'),
+          ),
+        ],
+      ),
+    );
+    // null = closed by tapping outside the dialog, same as cancel
+    if (yes != true || !mounted) return;
+
+    setState(() => _saving = true);
+    try {
+      await widget.store.archive(item.id!);
+      widget.onDone('Archived ${item.name}.');
+    } on StockItemException catch (e) {
+      // a recipe could have been added in between, the store checks again
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   // brings back the archived item with its old settings, what was typed here is dropped
   Future<void> _restoreMatch() async {
     final match = _archivedMatch!;
@@ -229,7 +282,8 @@ class _StockItemFormState extends State<StockItemForm> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // title + close
+          // title, archive (only when editing), close
+          // archive sits up here since the footer is too narrow for 3 buttons, the dialog still asks first
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 12, 8, 4),
             child: Row(
@@ -240,6 +294,11 @@ class _StockItemFormState extends State<StockItemForm> {
                     style: text.titleMedium,
                   ),
                 ),
+                if (!_isNew)
+                  TextButton(
+                    onPressed: _saving ? null : _archive,
+                    child: const Text('Archive'),
+                  ),
                 IconButton(
                   onPressed: widget.onCancel,
                   icon: const Icon(Icons.close),
