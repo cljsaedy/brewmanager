@@ -225,26 +225,20 @@ void main() {
       expect(await store.list(archived: true), isEmpty);
     });
 
-    // adds a menu item with these sizes, each size with a recipe line using the stock item
+    // adds these menu items, each with a recipe line using the stock item
     // archived = true puts in archived recipe lines (old amounts kept for reports)
     Future<void> addRecipes(
       int stockItemId,
-      String menuName,
-      List<String> sizes, {
+      List<String> menuNames, {
       bool archived = false,
     }) async {
-      final menuId = await db.insert('menu_items', {
-        'name': menuName,
-        'category': 'Coffee',
-      });
-      for (var i = 0; i < sizes.length; i++) {
-        final sizeId = await db.insert('menu_sizes', {
-          'menu_item_id': menuId,
-          'label': sizes[i],
-          'sort_order': i,
+      for (final name in menuNames) {
+        final menuId = await db.insert('menu_items', {
+          'name': name,
+          'category': 'Coffee',
         });
         await db.insert('recipe_lines', {
-          'menu_size_id': sizeId,
+          'menu_item_id': menuId,
           'stock_item_id': stockItemId,
           'amount': 30,
           'created_at': DateTime.utc(2026, 11, 1).toIso8601String(),
@@ -258,12 +252,12 @@ void main() {
 
     test('cannot archive while an active recipe uses it', () async {
       final id = await store.add(syrup());
-      await addRecipes(id, 'Iced caramel', ['Regular']);
-      await addRecipes(id, 'Caramel latte', ['Small', 'Large']);
+      // added out of order on purpose, the message lists them a-z
+      await addRecipes(id, ['Iced caramel', 'Caramel latte (Large)']);
 
       const message =
           "Can't archive Caramel syrup. It's used in: "
-          'Caramel latte (Small, Large), Iced caramel (Regular). '
+          'Caramel latte (Large), Iced caramel. '
           'Remove or replace it in those recipes first.';
       expect(await store.archiveProblem(id), message);
       await expectProblem(() => store.archive(id), message);
@@ -273,7 +267,7 @@ void main() {
 
     test('archived recipe lines do not block archiving', () async {
       final id = await store.add(syrup());
-      await addRecipes(id, 'Caramel latte', ['Large'], archived: true);
+      await addRecipes(id, ['Caramel latte (Large)'], archived: true);
 
       expect(await store.archiveProblem(id), isNull);
       await store.archive(id);
@@ -282,18 +276,14 @@ void main() {
   });
 
   group('lock after first use', () {
-    // adds a menu item with one size and a recipe line using the stock item
+    // adds a menu item with a recipe line using the stock item
     Future<void> useInRecipe(int stockItemId) async {
       final menuId = await db.insert('menu_items', {
-        'name': 'Caramel latte',
+        'name': 'Caramel latte (Large)',
         'category': 'Coffee',
       });
-      final sizeId = await db.insert('menu_sizes', {
-        'menu_item_id': menuId,
-        'label': 'Large',
-      });
       await db.insert('recipe_lines', {
-        'menu_size_id': sizeId,
+        'menu_item_id': menuId,
         'stock_item_id': stockItemId,
         'amount': 30,
         'created_at': DateTime.utc(2026, 11, 1).toIso8601String(),

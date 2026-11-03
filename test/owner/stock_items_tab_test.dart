@@ -292,12 +292,8 @@ void main() {
           'name': 'Caramel latte',
           'category': 'Coffee',
         });
-        final sizeId = await db.insert('menu_sizes', {
-          'menu_item_id': menuId,
-          'label': 'Large',
-        });
         await db.insert('recipe_lines', {
-          'menu_size_id': sizeId,
+          'menu_item_id': menuId,
           'stock_item_id': id,
           'amount': 30,
           'created_at': DateTime.utc(2026, 11, 1).toIso8601String(),
@@ -359,12 +355,8 @@ void main() {
           'name': 'Caramel latte',
           'category': 'Coffee',
         });
-        final sizeId = await db.insert('menu_sizes', {
-          'menu_item_id': menuId,
-          'label': 'Large',
-        });
         await db.insert('recipe_lines', {
-          'menu_size_id': sizeId,
+          'menu_item_id': menuId,
           'stock_item_id': id,
           'amount': 30,
           'created_at': DateTime.utc(2026, 11, 1).toIso8601String(),

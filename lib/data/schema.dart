@@ -43,60 +43,8 @@ const List<String> schemaStatements = [
   )
   ''',
 
-  // things on the menu, like spanish latte or french fries
-  '''
-  CREATE TABLE menu_items (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name        TEXT NOT NULL COLLATE NOCASE UNIQUE
-                CHECK (name = trim(name) AND name <> ''),
-    category    TEXT NOT NULL,
-    sort_order  INTEGER NOT NULL DEFAULT 0,
-    is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1))
-  )
-  ''',
-
-  // each menu item has its own sizes (small, large, regular...), never hardcoded
-  // price_hint is only shown to help pick the size, never added up
-  // a label can only be used once per menu item, ignoring case
-  '''
-  CREATE TABLE menu_sizes (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    menu_item_id INTEGER NOT NULL REFERENCES menu_items(id),
-    label        TEXT NOT NULL COLLATE NOCASE
-                 CHECK (label = trim(label) AND label <> ''),
-    price_hint   REAL CHECK (price_hint IS NULL OR price_hint >= 0),
-    sort_order   INTEGER NOT NULL DEFAULT 0,
-    is_archived  INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
-    UNIQUE (menu_item_id, label)
-  )
-  ''',
-
-  // recipe of one size = how much of each stock item it uses
-  // editing an amount archives the old line and adds a new one, so old reports can still find the old amount
-  // archived_at must be filled only when the line is archived
-  '''
-  CREATE TABLE recipe_lines (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    menu_size_id  INTEGER NOT NULL REFERENCES menu_sizes(id),
-    stock_item_id INTEGER NOT NULL REFERENCES stock_items(id),
-    amount        REAL NOT NULL CHECK (amount > 0),
-    is_archived   INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
-    created_at    TEXT NOT NULL,
-    archived_at   TEXT,
-    CHECK ((is_archived = 0 AND archived_at IS NULL)
-        OR (is_archived = 1 AND archived_at IS NOT NULL))
-  )
-  ''',
-
-  // only one ACTIVE line per size + stock item, archived lines dont count (partial unique index)
-  '''
-  CREATE UNIQUE INDEX idx_recipe_lines_active
-    ON recipe_lines (menu_size_id, stock_item_id)
-    WHERE is_archived = 0
-  ''',
-
-  // to quickly get all lines of a size, including archived ones when recalculating an old day
-  'CREATE INDEX idx_recipe_lines_size ON recipe_lines (menu_size_id)',
+  // menu items, recipe lines and tally lines, see menuTableStatements below
+  ...menuTableStatements,
 
   // one row per business day
   // covers_from is set when one count covers skipped open days
@@ -159,17 +107,6 @@ const List<String> schemaStatements = [
   'CREATE INDEX idx_stock_events_day ON stock_events (day_id, stock_item_id)',
   // for container checks, which look back at an item's past out events
   'CREATE INDEX idx_stock_events_item ON stock_events (stock_item_id, kind)',
-
-  // how many of each menu size were made that day, no prices
-  '''
-  CREATE TABLE tally_lines (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    day_id       INTEGER NOT NULL REFERENCES business_days(id),
-    menu_size_id INTEGER NOT NULL REFERENCES menu_sizes(id),
-    qty          INTEGER NOT NULL DEFAULT 0 CHECK (qty >= 0),
-    UNIQUE (day_id, menu_size_id)
-  )
-  ''',
 
   // computed numbers per day per item, saved at submit and redone on correction
   // gap only exists when the actual is exact and there is an expected number
@@ -238,4 +175,67 @@ const List<String> schemaStatements = [
   ''',
   // for finding emails that still need sending
   'CREATE INDEX idx_outbox_status ON outbox (status)',
+];
+
+// the menu, recipe and tally tables, kept in their own list so the version 2 upgrade
+// can make them again (see DatabaseHelper.onUpgrade)
+// there is no sizes table, every size is its own menu item like "Iced Americano (Large)" (rule 6)
+const List<String> menuTableStatements = [
+  // things on the menu, like "Iced Americano (Large)", "French Fries", "Espresso shot"
+  // price_hint is only shown in the tally to help pick the right item, never added up
+  // no_stock = 1 for items that use nothing the app counts, they never show "no recipe yet"
+  // archived_at must be filled only when archived, restore uses it to find the recipe lines archived with it
+  '''
+  CREATE TABLE menu_items (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL COLLATE NOCASE UNIQUE
+                CHECK (name = trim(name) AND name <> ''),
+    category    TEXT NOT NULL,
+    price_hint  REAL CHECK (price_hint IS NULL OR price_hint >= 0),
+    no_stock    INTEGER NOT NULL DEFAULT 0 CHECK (no_stock IN (0, 1)),
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
+    archived_at TEXT,
+    CHECK ((is_archived = 0 AND archived_at IS NULL)
+        OR (is_archived = 1 AND archived_at IS NOT NULL))
+  )
+  ''',
+
+  // recipe of one menu item = how much of each stock item it uses
+  // editing an amount archives the old line and adds a new one, so old reports can still find the old amount
+  // archived_at must be filled only when the line is archived
+  '''
+  CREATE TABLE recipe_lines (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    menu_item_id  INTEGER NOT NULL REFERENCES menu_items(id),
+    stock_item_id INTEGER NOT NULL REFERENCES stock_items(id),
+    amount        REAL NOT NULL CHECK (amount > 0),
+    is_archived   INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
+    created_at    TEXT NOT NULL,
+    archived_at   TEXT,
+    CHECK ((is_archived = 0 AND archived_at IS NULL)
+        OR (is_archived = 1 AND archived_at IS NOT NULL))
+  )
+  ''',
+
+  // only one ACTIVE line per menu item + stock item, archived lines dont count (partial unique index)
+  '''
+  CREATE UNIQUE INDEX idx_recipe_lines_active
+    ON recipe_lines (menu_item_id, stock_item_id)
+    WHERE is_archived = 0
+  ''',
+
+  // to quickly get all lines of a menu item, including archived ones when recalculating an old day
+  'CREATE INDEX idx_recipe_lines_menu ON recipe_lines (menu_item_id)',
+
+  // how many of each menu item were made that day, no prices
+  '''
+  CREATE TABLE tally_lines (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    day_id       INTEGER NOT NULL REFERENCES business_days(id),
+    menu_item_id INTEGER NOT NULL REFERENCES menu_items(id),
+    qty          INTEGER NOT NULL DEFAULT 0 CHECK (qty >= 0),
+    UNIQUE (day_id, menu_item_id)
+  )
+  ''',
 ];

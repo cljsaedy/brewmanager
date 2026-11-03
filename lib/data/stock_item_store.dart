@@ -127,31 +127,22 @@ class StockItemStore {
   // archived recipe lines dont block it, they are only kept for old reports
   Future<String?> archiveProblem(int id) async {
     final item = await _get(id);
-    // the menu item + size of every active recipe line that uses this stock item
+    // the menu items of every active recipe line that uses this stock item, a-z
+    // one stock item is at most once per menu item, so no menu item shows twice
     final rows = await _db.rawQuery(
       '''
-      SELECT m.name AS menu_name, s.label AS size_label
+      SELECT m.name AS menu_name
       FROM recipe_lines r
-      JOIN menu_sizes s ON s.id = r.menu_size_id
-      JOIN menu_items m ON m.id = s.menu_item_id
+      JOIN menu_items m ON m.id = r.menu_item_id
       WHERE r.stock_item_id = ? AND r.is_archived = 0
-      ORDER BY m.name COLLATE NOCASE, s.sort_order, s.label COLLATE NOCASE
+      ORDER BY m.name COLLATE NOCASE
       ''',
       [id],
     );
     if (rows.isEmpty) return null;
 
-    // group the sizes under their menu item, like {'Caramel latte': ['Small', 'Large']}
-    // a map keeps the order the keys were added, so the sql order stays
-    final sizesByMenu = <String, List<String>>{};
-    for (final row in rows) {
-      final menu = row['menu_name'] as String;
-      sizesByMenu.putIfAbsent(menu, () => []).add(row['size_label'] as String);
-    }
-    // like "Caramel latte (Small, Large), Iced caramel (Regular)"
-    final usedIn = sizesByMenu.entries
-        .map((e) => '${e.key} (${e.value.join(', ')})')
-        .join(', ');
+    // like "Caramel latte (Large), Iced caramel"
+    final usedIn = rows.map((row) => row['menu_name'] as String).join(', ');
 
     return "Can't archive ${item.name}. It's used in: $usedIn. "
         'Remove or replace it in those recipes first.';

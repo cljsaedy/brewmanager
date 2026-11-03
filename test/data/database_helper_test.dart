@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -54,14 +56,20 @@ void main() {
     });
   }
 
-  Future<int> addMenuItem(String name) {
-    return db.insert('menu_items', {'name': name, 'category': 'Coffee'});
-  }
-
-  Future<int> addSize(int menuItemId, String label) {
-    return db.insert('menu_sizes', {
-      'menu_item_id': menuItemId,
-      'label': label,
+  Future<int> addMenuItem(
+    String name, {
+    double? priceHint,
+    int noStock = 0,
+    int isArchived = 0,
+    String? archivedAt,
+  }) {
+    return db.insert('menu_items', {
+      'name': name,
+      'category': 'Coffee',
+      'price_hint': priceHint,
+      'no_stock': noStock,
+      'is_archived': isArchived,
+      'archived_at': archivedAt,
     });
   }
 
@@ -81,7 +89,6 @@ void main() {
           'app_settings',
           'stock_items',
           'menu_items',
-          'menu_sizes',
           'recipe_lines',
           'business_days',
           'count_lines',
@@ -93,6 +100,8 @@ void main() {
           'outbox',
         ]),
       );
+      // every size is its own menu item now, so there is no sizes table
+      expect(names, isNot(contains('menu_sizes')));
     });
 
     test('foreign keys are turned on', () async {
@@ -157,31 +166,45 @@ void main() {
     });
   });
 
-  group('menu sizes', () {
-    test(
-      'same label twice on one menu item is rejected, ignoring case',
-      () async {
-        final latte = await addMenuItem('Spanish Latte');
-        await addSize(latte, 'Large');
-        expect(addSize(latte, 'large'), rejected);
-      },
-    );
+  group('menu items', () {
+    test('sizes are separate items with their own names', () async {
+      await addMenuItem('Iced Americano (Regular)', priceHint: 120);
+      expect(
+        await addMenuItem('Iced Americano (Large)', priceHint: 140),
+        greaterThan(0),
+      );
+    });
 
-    test('same label on two different menu items is fine', () async {
-      final latte = await addMenuItem('Spanish Latte');
-      final mocha = await addMenuItem('Mocha');
-      await addSize(latte, 'Large');
-      expect(await addSize(mocha, 'Large'), greaterThan(0));
+    test('same name with different case is rejected', () async {
+      await addMenuItem('Americano');
+      expect(addMenuItem('AMERICANO'), rejected);
+    });
+
+    test('price below 0 is rejected, no price is fine', () async {
+      expect(addMenuItem('Americano', priceHint: -1), rejected);
+      expect(await addMenuItem('Mocha'), greaterThan(0));
+    });
+
+    test('no_stock must be 0 or 1', () async {
+      expect(addMenuItem('Water', noStock: 2), rejected);
+      expect(await addMenuItem('Water', noStock: 1), greaterThan(0));
+    });
+
+    test('archived menu item without archived_at is rejected', () async {
+      expect(addMenuItem('Old drink', isArchived: 1), rejected);
+      expect(
+        await addMenuItem('Old drink', isArchived: 1, archivedAt: now),
+        greaterThan(0),
+      );
     });
   });
 
   group('recipe lines', () {
-    late int sizeId;
+    late int menuItemId;
     late int milkId;
 
     setUp(() async {
-      final latte = await addMenuItem('Spanish Latte');
-      sizeId = await addSize(latte, 'Large');
+      menuItemId = await addMenuItem('Spanish Latte (Large)');
       milkId = await addStockItem();
     });
 
@@ -191,7 +214,7 @@ void main() {
       String? archivedAt,
     }) {
       return db.insert('recipe_lines', {
-        'menu_size_id': sizeId,
+        'menu_item_id': menuItemId,
         'stock_item_id': milkId,
         'amount': amount,
         'is_archived': isArchived,
@@ -204,10 +227,13 @@ void main() {
       expect(addLine(amount: 0), rejected);
     });
 
-    test('two active lines for the same size and item are rejected', () async {
-      await addLine();
-      expect(addLine(amount: 180), rejected);
-    });
+    test(
+      'two active lines for the same menu item and stock item are rejected',
+      () async {
+        await addLine();
+        expect(addLine(amount: 180), rejected);
+      },
+    );
 
     test(
       'an archived line plus a new active line is fine (recipe edit)',
@@ -264,6 +290,84 @@ void main() {
         'created_at': now,
       });
       expect(id, greaterThan(0));
+    });
+  });
+
+  group('upgrade from version 1', () {
+    // a real file this time, an in-memory db would be gone after closing it
+    late Directory folder;
+    late String path;
+
+    setUp(() async {
+      folder = await Directory.systemTemp.createTemp('brewmanager_test');
+      path = '${folder.path}/old.db';
+    });
+
+    tearDown(() async {
+      await folder.delete(recursive: true);
+    });
+
+    test('menu tables are made again, stock items stay', () async {
+      // make a version 1 file with the old menu_sizes tables (just the columns that matter)
+      final old = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 1,
+          onCreate: (db, version) async {
+            await db.execute(
+              'CREATE TABLE stock_items (id INTEGER PRIMARY KEY, name TEXT)',
+            );
+            await db.execute(
+              'CREATE TABLE menu_items (id INTEGER PRIMARY KEY, name TEXT)',
+            );
+            await db.execute(
+              'CREATE TABLE menu_sizes (id INTEGER PRIMARY KEY, '
+              'menu_item_id INTEGER, label TEXT)',
+            );
+            await db.execute(
+              'CREATE TABLE recipe_lines (id INTEGER PRIMARY KEY, '
+              'menu_size_id INTEGER, stock_item_id INTEGER)',
+            );
+            await db.execute(
+              'CREATE TABLE tally_lines (id INTEGER PRIMARY KEY, '
+              'day_id INTEGER, menu_size_id INTEGER)',
+            );
+          },
+        ),
+      );
+      await old.insert('stock_items', {'name': 'Milk'});
+      await old.close();
+
+      // open it again like the new app does, so onUpgrade runs 1 -> 2
+      final upgraded = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: DatabaseHelper.version,
+          onConfigure: DatabaseHelper.onConfigure,
+          onCreate: DatabaseHelper.onCreate,
+          onUpgrade: DatabaseHelper.onUpgrade,
+        ),
+      );
+
+      final tables = (await upgraded.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table'",
+      )).map((row) => row['name']).toSet();
+      expect(tables, isNot(contains('menu_sizes')));
+
+      // PRAGMA table_info = the columns of a table
+      Future<Set<Object?>> columns(String table) async =>
+          (await upgraded.rawQuery(
+            'PRAGMA table_info($table)',
+          )).map((row) => row['name']).toSet();
+      expect(await columns('menu_items'), contains('no_stock'));
+      expect(await columns('recipe_lines'), contains('menu_item_id'));
+      expect(await columns('tally_lines'), contains('menu_item_id'));
+
+      // the stock item from version 1 is still there
+      final stock = await upgraded.query('stock_items');
+      expect(stock.single['name'], 'Milk');
+
+      await upgraded.close();
     });
   });
 }
