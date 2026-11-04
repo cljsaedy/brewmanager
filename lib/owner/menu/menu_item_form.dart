@@ -334,7 +334,6 @@ class _MenuItemFormState extends State<MenuItemForm> {
               ? (ticked) => setState(() => _noStock = ticked ?? false)
               : null,
           title: const Text("Doesn't use tracked stock"),
-          subtitle: const Text('It never shows as "no recipe yet".'),
           controlAffinity: ListTileControlAffinity.leading,
           contentPadding: EdgeInsets.zero,
         ),

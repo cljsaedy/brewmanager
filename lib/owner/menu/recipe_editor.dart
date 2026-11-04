@@ -320,7 +320,7 @@ class _RecipeEditorState extends State<RecipeEditor> {
         AmountField(
           fieldKey: const Key('recipe_amount_field'),
           unitKey: const Key('recipe_amount_unit'),
-          label: 'Amount for 1 order',
+          label: 'Amount',
           controller: _amountController,
           units: inputUnitsFor(base),
           unit: unit,
