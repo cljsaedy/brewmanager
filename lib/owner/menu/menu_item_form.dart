@@ -2,29 +2,42 @@ import 'package:flutter/material.dart';
 
 import '../../data/menu_item.dart';
 import '../../data/menu_item_store.dart';
+import '../../data/recipe_store.dart';
 import '../../data/stock_item.dart';
+import '../../data/stock_item_store.dart';
 import '../../logic/formatting.dart';
 import '../../widgets/message_box.dart';
+import 'recipe_editor.dart';
 
-// the right side panel for adding a new menu item or editing one
+// the right side panel for adding a new menu item or editing one, with its recipe under the fields
 // item null = adding a new one
-// the recipe editor goes in this panel later (3d)
 class MenuItemForm extends StatefulWidget {
   const MenuItemForm({
     super.key,
     required this.store,
+    required this.recipes,
+    required this.stock,
     required this.item,
     required this.categories,
     required this.onDone,
+    required this.onSavedForRecipe,
+    required this.onRecipeChanged,
     required this.onCancel,
   });
 
   final MenuItemStore store;
+  final RecipeStore recipes;
+  final StockItemStore stock;
   final MenuItem? item;
   // categories already used, shown as tap-to-fill chips
   final List<String> categories;
   // called after saving or restoring, with the message for the snackbar
   final ValueChanged<String> onDone;
+  // called instead of onDone when the save made the recipe part usable,
+  // gives the saved item so the panel can stay open on it
+  final void Function(MenuItem saved, String message) onSavedForRecipe;
+  // called after a recipe line changed, so the table can show the new count
+  final VoidCallback onRecipeChanged;
   final VoidCallback onCancel;
 
   @override
@@ -122,12 +135,23 @@ class _MenuItemFormState extends State<MenuItemForm> {
 
     setState(() => _saving = true);
     try {
+      // the recipe part was not usable before this save: a new item has no id for the lines yet,
+      // and a saved no-stock item cant have lines
+      final recipeWasClosed = _isNew || widget.item!.noStock;
       if (_isNew) {
         await widget.store.add(item);
       } else {
         await widget.store.update(item);
       }
-      widget.onDone('Saved ${item.name.trim()}.');
+
+      final message = 'Saved ${item.name.trim()}.';
+      if (recipeWasClosed && !item.noStock) {
+        // read it back so the panel gets the saved row, with its id and cleaned up category
+        final saved = await widget.store.findByName(item.name);
+        widget.onSavedForRecipe(saved!, message);
+      } else {
+        widget.onDone(message);
+      }
     } on MenuNameTakenException catch (e) {
       // archived item with this name: offer restore instead of a duplicate (rule 12)
       setState(() {
@@ -217,6 +241,7 @@ class _MenuItemFormState extends State<MenuItemForm> {
                   ),
                   const SizedBox(height: 10),
                   _noStockBox(text),
+                  _recipeSection(text),
                 ],
               ),
             ),
@@ -317,6 +342,36 @@ class _MenuItemFormState extends State<MenuItemForm> {
           Text(
             'Remove the recipe lines first to tick this.',
             style: text.bodySmall,
+          ),
+      ],
+    );
+  }
+
+  // the recipe under the fields
+  // nothing shows while the box is ticked, the item uses no stock
+  // new items and saved no-stock items need a save first, the store would refuse their lines
+  Widget _recipeSection(TextTheme text) {
+    final item = widget.item;
+    if (_noStock) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 8),
+        const Divider(),
+        const SizedBox(height: 12),
+        if (item == null || item.noStock)
+          Text('Save this item to add its recipe.', style: text.bodySmall)
+        else
+          RecipeEditor(
+            recipes: widget.recipes,
+            stock: widget.stock,
+            menuItemId: item.id!,
+            onChanged: (lineCount) {
+              // the no-stock box follows the recipe, greyed out once it has lines
+              setState(() => _hasRecipe = lineCount > 0);
+              widget.onRecipeChanged();
+            },
           ),
       ],
     );

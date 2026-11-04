@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../data/menu_item.dart';
 import '../../data/menu_item_store.dart';
+import '../../data/recipe_store.dart';
+import '../../data/stock_item_store.dart';
 import '../../logic/formatting.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/category_title.dart';
@@ -12,9 +14,17 @@ import 'menu_item_form.dart';
 // every size is its own menu item, like "Iced Americano (Large)" (rule 6)
 // add item or tapping a row opens the form panel on the right
 class MenuTab extends StatefulWidget {
-  const MenuTab({super.key, required this.store});
+  const MenuTab({
+    super.key,
+    required this.store,
+    required this.recipes,
+    required this.stock,
+  });
 
   final MenuItemStore store;
+  final RecipeStore recipes;
+  // the recipe editor picks from the active stock items
+  final StockItemStore stock;
 
   @override
   State<MenuTab> createState() => _MenuTabState();
@@ -88,10 +98,21 @@ class _MenuTabState extends State<MenuTab> {
   // after a save or restore: close the panel, show the message at the bottom, reload the list
   void _onFormDone(String message) {
     _closePanel();
+    _showMessage(message);
+    _load();
+  }
+
+  // after saving a new item: the panel stays open on it, so the owner can add its recipe next
+  void _onSavedForRecipe(MenuItem saved, String message) {
+    _openEdit(saved);
+    _showMessage(message);
+    _load();
+  }
+
+  void _showMessage(String message) {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
-    _load();
   }
 
   @override
@@ -108,9 +129,14 @@ class _MenuTabState extends State<MenuTab> {
               // a new key per item = the form starts fresh when another row is tapped
               key: ValueKey(_editing?.id ?? 'new'),
               store: widget.store,
+              recipes: widget.recipes,
+              stock: widget.stock,
               item: _editing,
               categories: _categories,
               onDone: _onFormDone,
+              onSavedForRecipe: _onSavedForRecipe,
+              // recipes save right away, so only the table needs a redraw
+              onRecipeChanged: _load,
               onCancel: _closePanel,
             ),
           ),

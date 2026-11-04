@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../data/menu_item_store.dart';
+import '../data/recipe_store.dart';
 import '../data/stock_item_store.dart';
 import '../layout/side_rail.dart';
 import '../widgets/placeholder_tab.dart';
@@ -37,6 +38,7 @@ class _OwnerSectionScreenState extends State<OwnerSectionScreen> {
   // made once here so it isnt remade every time the screen redraws
   late final StockItemStore _stockStore = StockItemStore(widget.db);
   late final MenuItemStore _menuStore = MenuItemStore(widget.db);
+  late final RecipeStore _recipeStore = RecipeStore(widget.db);
 
   // listens for the app going to the background
   late final AppLifecycleListener _lifecycle;
@@ -94,7 +96,11 @@ class _OwnerSectionScreenState extends State<OwnerSectionScreen> {
                       title: 'Reports',
                       note: 'Sent reports come in Feature 10.',
                     ),
-                    MenuTab(store: _menuStore),
+                    MenuTab(
+                      store: _menuStore,
+                      recipes: _recipeStore,
+                      stock: _stockStore,
+                    ),
                     StockItemsTab(store: _stockStore),
                     const PlaceholderTab(
                       title: 'Settings',

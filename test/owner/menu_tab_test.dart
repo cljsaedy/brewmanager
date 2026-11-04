@@ -64,6 +64,27 @@ void main() {
     });
   }
 
+  // scrolls the panel to it and taps it, the recipe sits below the fields
+  Future<void> tapVisible(WidgetTester tester, Finder target) async {
+    await tester.ensureVisible(target);
+    await tester.pumpAndSettle();
+    await tester.tap(target);
+    await tester.pump();
+  }
+
+  // puts a stock item that is already saved in the recipe
+  Future<void> addRecipeLineFor(
+    WidgetTester tester,
+    int menuItemId,
+    String stockName,
+    double amount,
+  ) async {
+    await tester.runAsync(() async {
+      final stock = await StockItemStore(db).findByName(stockName);
+      await RecipeStore(db).addLine(menuItemId, stock!.id!, amount);
+    });
+  }
+
   // scrolls the panel to a box and types in it
   Future<void> fill(WidgetTester tester, String key, String value) async {
     final box = find.byKey(Key(key));
@@ -142,9 +163,11 @@ void main() {
     await fill(tester, 'menu_price_field', '1,250.50');
     await tapSave(tester);
 
-    expect(find.text('Add menu item'), findsNothing);
+    // the panel stays open on the new item, ready for its recipe
+    expect(find.text('Edit menu item'), findsOneWidget);
     expect(find.text('Saved Iced Americano (Large).'), findsOneWidget);
-    expect(find.text('Iced Americano (Large)'), findsOneWidget);
+    // once in the table, once in the name box
+    expect(find.text('Iced Americano (Large)'), findsNWidgets(2));
 
     final saved = await tester.runAsync(
       () => store.findByName('Iced Americano (Large)'),
@@ -222,11 +245,277 @@ void main() {
     await openAdd(tester);
 
     await fill(tester, 'menu_name_field', 'Hot water');
-    await tester.tap(find.byKey(const Key('no_stock_box')));
+    await tapVisible(tester, find.byKey(const Key('no_stock_box')));
     await tester.pump();
     await tapSave(tester);
 
     expect(find.text("Doesn't use stock"), findsOneWidget);
+  });
+
+  group('recipe', () {
+    // saved menu item + stock items, each in the unit it is counted in
+    const milk = StockItem(
+      name: 'Whole milk',
+      category: 'Dairy',
+      baseUnit: BaseUnit.ml,
+      countType: CountType.container,
+      containerSize: 1000,
+      lowMode: LowMode.containers,
+      lowValue: 1,
+    );
+    const beans = StockItem(
+      name: 'Espresso beans',
+      category: 'Coffee',
+      baseUnit: BaseUnit.g,
+      countType: CountType.container,
+      containerSize: 250,
+      lowMode: LowMode.containers,
+      lowValue: 1,
+    );
+
+    Future<void> addStock(WidgetTester tester, List<StockItem> items) async {
+      await tester.runAsync(() async {
+        for (final item in items) {
+          await StockItemStore(db).add(item);
+        }
+      });
+    }
+
+    // the editor reads the db after the panel opens, so give it real time
+    Future<void> waitForDb(WidgetTester tester) async {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    // opens the panel of the item, with its recipe loaded
+    Future<void> openItem(WidgetTester tester, String name) async {
+      await openMenu(tester);
+      await tester.tap(find.text(name));
+      await waitForDb(tester);
+    }
+
+    // picks a stock item in the dropdown
+    Future<void> pickStock(WidgetTester tester, String name) async {
+      final picker = find.byKey(const Key('recipe_stock_picker'));
+      await tester.ensureVisible(picker);
+      await tester.pumpAndSettle();
+      await tester.tap(picker);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(name).last);
+      await tester.pumpAndSettle();
+    }
+
+    // taps add or update and waits for the db
+    Future<void> tapButton(WidgetTester tester, String label) async {
+      final button = find.widgetWithText(OutlinedButton, label);
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
+      await tester.tap(button);
+      await waitForDb(tester);
+    }
+
+    Future<List<RecipeLine>> savedLines(WidgetTester tester, int id) async {
+      return (await tester.runAsync(() => RecipeStore(db).lines(id)))!;
+    }
+
+    testWidgets('a new item stays open after saving, ready for its recipe', (
+      tester,
+    ) async {
+      await addStock(tester, [milk]);
+      await openAdd(tester);
+      expect(find.text('Save this item to add its recipe.'), findsOneWidget);
+
+      await fill(tester, 'menu_name_field', 'Latte');
+      await tapSave(tester);
+      await waitForDb(tester);
+
+      expect(find.text('Edit menu item'), findsOneWidget);
+      expect(find.text('No lines yet.'), findsOneWidget);
+      expect(find.text('Saved Latte.'), findsOneWidget);
+    });
+
+    testWidgets('adds a line, the table count follows right away', (
+      tester,
+    ) async {
+      await addStock(tester, [milk]);
+      final latte = await addItem(
+        tester,
+        const MenuItem(name: 'Latte', category: 'Coffee'),
+      );
+      await openItem(tester, 'Latte');
+      expect(find.text('No recipe yet'), findsOneWidget);
+
+      await pickStock(tester, 'Whole milk');
+      await fill(tester, 'recipe_amount_field', '150');
+      await tapButton(tester, 'Add');
+
+      expect(find.text('150 ml'), findsOneWidget);
+      expect(find.text('1 stock item'), findsOneWidget);
+      // the only stock item is used now, so nothing is left to pick
+      expect(
+        find.text('Every stock item is already in this recipe.'),
+        findsOneWidget,
+      );
+      expect((await savedLines(tester, latte)).single.amount, 150);
+    });
+
+    testWidgets('amount typed in oz is saved in ml', (tester) async {
+      await addStock(tester, [milk]);
+      final latte = await addItem(
+        tester,
+        const MenuItem(name: 'Latte', category: 'Coffee'),
+      );
+      await openItem(tester, 'Latte');
+
+      await pickStock(tester, 'Whole milk');
+      await fill(tester, 'recipe_amount_field', '2');
+      final unit = find.byKey(const Key('recipe_amount_unit'));
+      await tester.ensureVisible(unit);
+      await tester.pumpAndSettle();
+      await tester.tap(unit);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('oz').last);
+      await tester.pumpAndSettle();
+      expect(find.text('= 59.15 ml'), findsOneWidget);
+
+      await tapButton(tester, 'Add');
+      expect((await savedLines(tester, latte)).single.amount, 59.147);
+    });
+
+    testWidgets('a g item only offers weight units', (tester) async {
+      await addStock(tester, [beans]);
+      await addItem(tester, const MenuItem(name: 'Latte', category: 'Coffee'));
+      await openItem(tester, 'Latte');
+
+      await pickStock(tester, 'Espresso beans');
+      final unit = find.byKey(const Key('recipe_amount_unit'));
+      await tester.ensureVisible(unit);
+      await tester.pumpAndSettle();
+      await tester.tap(unit);
+      await tester.pumpAndSettle();
+
+      expect(find.text('kg'), findsWidgets);
+      expect(find.text('ml'), findsNothing);
+      expect(find.text('oz'), findsNothing);
+    });
+
+    testWidgets('a wrong amount shows the problem', (tester) async {
+      await addStock(tester, [milk]);
+      final latte = await addItem(
+        tester,
+        const MenuItem(name: 'Latte', category: 'Coffee'),
+      );
+      await openItem(tester, 'Latte');
+
+      await pickStock(tester, 'Whole milk');
+      await fill(tester, 'recipe_amount_field', 'abc');
+      await tapButton(tester, 'Add');
+      expect(find.text('Type the amount as a number.'), findsOneWidget);
+
+      await fill(tester, 'recipe_amount_field', '0');
+      await tapButton(tester, 'Add');
+      expect(find.text('Amount must be more than 0.'), findsOneWidget);
+      expect(await savedLines(tester, latte), isEmpty);
+    });
+
+    testWidgets('tapping a line changes its amount, the rule 12 way', (
+      tester,
+    ) async {
+      await addStock(tester, [milk]);
+      final latte = await addItem(
+        tester,
+        const MenuItem(name: 'Latte', category: 'Coffee'),
+      );
+      await addRecipeLineFor(tester, latte, 'Whole milk', 150);
+      await openItem(tester, 'Latte');
+
+      await tapVisible(tester, find.text('150 ml'));
+      await tester.pumpAndSettle();
+      expect(find.text('Change Whole milk'), findsOneWidget);
+
+      await fill(tester, 'recipe_amount_field', '180');
+      await tapButton(tester, 'Update');
+
+      expect(find.text('180 ml'), findsOneWidget);
+      expect((await savedLines(tester, latte)).single.amount, 180);
+      // the old line is still there, archived, for old days
+      final rows = await tester.runAsync(() => db.query('recipe_lines'));
+      expect(rows, hasLength(2));
+    });
+
+    testWidgets('removing a line frees the no stock box', (tester) async {
+      await addStock(tester, [milk]);
+      final latte = await addItem(
+        tester,
+        const MenuItem(name: 'Latte', category: 'Coffee'),
+      );
+      await addRecipeLineFor(tester, latte, 'Whole milk', 150);
+      await openItem(tester, 'Latte');
+
+      await tapVisible(tester, find.byTooltip('Remove Whole milk'));
+      await waitForDb(tester);
+
+      expect(find.text('No lines yet.'), findsOneWidget);
+      expect(find.text('No recipe yet'), findsOneWidget);
+      final box = tester.widget<CheckboxListTile>(
+        find.byKey(const Key('no_stock_box')),
+      );
+      expect(box.onChanged, isNotNull);
+    });
+
+    testWidgets('archived stock items are not in the picker', (tester) async {
+      await addStock(tester, [milk, beans]);
+      await tester.runAsync(() async {
+        final store = StockItemStore(db);
+        await store.archive((await store.findByName('Whole milk'))!.id!);
+      });
+      await addItem(tester, const MenuItem(name: 'Latte', category: 'Coffee'));
+      await openItem(tester, 'Latte');
+
+      final picker = find.byKey(const Key('recipe_stock_picker'));
+      await tester.ensureVisible(picker);
+      await tester.pumpAndSettle();
+      await tester.tap(picker);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Espresso beans'), findsWidgets);
+      expect(find.text('Whole milk'), findsNothing);
+    });
+
+    testWidgets('ticking no stock hides the recipe, unticking asks to save', (
+      tester,
+    ) async {
+      await addStock(tester, [milk]);
+      await addItem(
+        tester,
+        const MenuItem(name: 'Hot water', category: '', noStock: true),
+      );
+      await openItem(tester, 'Hot water');
+      expect(find.text('Save this item to add its recipe.'), findsNothing);
+
+      await tapVisible(tester, find.byKey(const Key('no_stock_box')));
+      await tester.pump();
+      expect(find.text('Save this item to add its recipe.'), findsOneWidget);
+
+      await tapSave(tester);
+      await waitForDb(tester);
+      // stays open, now the recipe can be added
+      expect(find.text('No lines yet.'), findsOneWidget);
+    });
+
+    testWidgets('with no stock items it says to add them first', (
+      tester,
+    ) async {
+      await addItem(tester, const MenuItem(name: 'Latte', category: 'Coffee'));
+      await openItem(tester, 'Latte');
+
+      expect(
+        find.text('Add stock items first, in the Stock Items tab.'),
+        findsOneWidget,
+      );
+    });
   });
 
   testWidgets('a name of an archived item offers restore', (tester) async {
