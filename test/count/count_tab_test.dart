@@ -71,7 +71,9 @@ Future<void> showTab(WidgetTester tester, DraftDay? draft) async {
   await tester.pumpWidget(
     MaterialApp(
       theme: AppTheme.light(),
-      home: Scaffold(body: CountTab(draft: draft)),
+      home: Scaffold(
+        body: CountTab(draft: draft, store: null, onChanged: () {}),
+      ),
     ),
   );
 }

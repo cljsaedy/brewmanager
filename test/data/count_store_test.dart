@@ -351,6 +351,105 @@ void main() {
     });
   });
 
+  group('autosave', () {
+    test('sealed and a level give an estimated End', () async {
+      await stock.add(syrup());
+      final draft = await store.loadDraft();
+
+      await store.saveContainerCount(
+        draft.rows.single,
+        sealed: 2,
+        level: level50,
+        exactQty: null,
+      );
+
+      final line = lineOf(await store.loadDraft(), 'Caramel syrup');
+      expect(line.sealed, 2);
+      expect(line.level, level50);
+      expect(line.endQty, 5000);
+      expect(line.endIsExact, isFalse);
+      expect(line.touched, isTrue);
+    });
+
+    test('an exact amount replaces the level and is exact', () async {
+      await stock.add(syrup());
+      final draft = await store.loadDraft();
+
+      await store.saveContainerCount(
+        draft.rows.single,
+        sealed: 1,
+        level: level75,
+        exactQty: 350,
+      );
+
+      final line = lineOf(await store.loadDraft(), 'Caramel syrup');
+      expect(line.endQty, 2350);
+      expect(line.endIsExact, isTrue);
+    });
+
+    test('saving the same values still marks the line touched', () async {
+      await stock.add(syrup());
+      final draft = await store.loadDraft();
+      final line = draft.rows.single.line;
+      expect(line.touched, isFalse);
+
+      await store.saveContainerCount(
+        draft.rows.single,
+        sealed: line.sealed!,
+        level: line.level!,
+        exactQty: line.exactQty,
+      );
+
+      expect(lineOf(await store.loadDraft(), 'Caramel syrup').touched, isTrue);
+    });
+
+    test('a number item saves its number as an exact End', () async {
+      await stock.add(friesPack);
+      final draft = await store.loadDraft();
+
+      await store.saveNumberCount(draft.rows.single.line.id, 9);
+
+      final line = lineOf(await store.loadDraft(), 'Fries pack');
+      expect(line.endQty, 9);
+      expect(line.endIsExact, isTrue);
+      expect(line.touched, isTrue);
+    });
+
+    test('a note saves and leaves the line untouched', () async {
+      await stock.add(friesPack);
+      final draft = await store.loadDraft();
+
+      await store.saveNote(draft.rows.single.line.id, ' 2 packs expired ');
+
+      final line = lineOf(await store.loadDraft(), 'Fries pack');
+      expect(line.note, '2 packs expired');
+      expect(line.touched, isFalse);
+    });
+
+    test('an empty note is saved as null', () async {
+      await stock.add(friesPack);
+      final draft = await store.loadDraft();
+      final id = draft.rows.single.line.id;
+
+      await store.saveNote(id, 'something');
+      await store.saveNote(id, '   ');
+
+      expect(lineOf(await store.loadDraft(), 'Fries pack').note, isNull);
+    });
+
+    test('the low-stock level saves on the item, line untouched', () async {
+      await stock.add(syrup());
+      final draft = await store.loadDraft();
+
+      await store.saveLowValue(draft.rows.single.item.id!, 3);
+
+      final row = (await store.loadDraft()).rows.single;
+      expect(row.item.lowValue, 3);
+      expect(row.item.lowMode, LowMode.containers);
+      expect(row.line.touched, isFalse);
+    });
+  });
+
   group('when the owner changes an item during the day', () {
     test('a new container size works End out again, Start stays', () async {
       final id = await stock.add(syrup());

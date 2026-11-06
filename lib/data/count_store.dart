@@ -40,6 +40,63 @@ class CountStore {
     return txn.insert('business_days', {'business_date': await _nextDate(txn)});
   }
 
+  // saves a container item's count, every tap on sealed or opened comes here (autosave)
+  // End only comes from these fields so it is worked out again here (rule 3)
+  // touched = 1 even if the value stayed the same, the barista still looked at the item
+  Future<void> saveContainerCount(
+    CountRow row, {
+    required int sealed,
+    required double level,
+    required double? exactQty,
+  }) async {
+    final values = _containerValues(
+      row.item,
+      sealed: sealed,
+      level: level,
+      exactQty: exactQty,
+    );
+    await _db.update(
+      'count_lines',
+      {...values, 'touched': 1},
+      where: 'id = ?',
+      whereArgs: [row.line.id],
+    );
+  }
+
+  // saves a number item's count, for these items the number is the End (rule 2)
+  // a typed number has no level guess in it so it is always exact
+  Future<void> saveNumberCount(int lineId, double number) async {
+    await _db.update(
+      'count_lines',
+      {'end_qty': number, 'end_is_exact': 1, 'touched': 1},
+      where: 'id = ?',
+      whereArgs: [lineId],
+    );
+  }
+
+  // saves the item note, an empty box is saved as null (rule 9)
+  // the line stays untouched since a note is not a count
+  Future<void> saveNote(int lineId, String note) async {
+    final clean = note.trim();
+    await _db.update(
+      'count_lines',
+      {'note': clean.isEmpty ? null : clean},
+      where: 'id = ?',
+      whereArgs: [lineId],
+    );
+  }
+
+  // saves the low-stock level the barista typed, it stays in the mode the owner picked (rule 8)
+  // this changes the stock item and not the line, so it stays the same on the next days too
+  Future<void> saveLowValue(int stockItemId, double value) async {
+    await _db.update(
+      'stock_items',
+      {'low_value': value},
+      where: 'id = ?',
+      whereArgs: [stockItemId],
+    );
+  }
+
   // the date of a new draft: the day after the last submitted or closed day
   // so a date never goes back or repeats (rule 5)
   // no days yet = today on the tablet, the first count date from the setup wizard comes in feature 11

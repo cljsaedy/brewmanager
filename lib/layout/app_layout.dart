@@ -57,6 +57,11 @@ class _AppLayoutState extends State<AppLayout> with RouteAware {
   // the day being counted, null while still loading from the db
   // kept here and not in the count tab since the top bar needs its date too
   DraftDay? _draft;
+  // null until the first load, the count tab saves through this
+  CountStore? _countStore;
+  // goes up when the owner section closes, the new key makes the count tab start fresh
+  // so an open panel never shows an item the owner just changed
+  int _countTabVersion = 0;
 
   @override
   void initState() {
@@ -84,6 +89,7 @@ class _AppLayoutState extends State<AppLayout> with RouteAware {
   // so that await ends when the pin is right, not when the owner leaves
   @override
   void didPopNext() {
+    setState(() => _countTabVersion++);
     _loadDraft();
   }
 
@@ -95,6 +101,7 @@ class _AppLayoutState extends State<AppLayout> with RouteAware {
     if (!mounted) return;
     setState(() {
       _draft = draft;
+      _countStore = store;
     });
   }
 
@@ -164,7 +171,12 @@ class _AppLayoutState extends State<AppLayout> with RouteAware {
                       child: IndexedStack(
                         index: _selectedIndex,
                         children: [
-                          CountTab(draft: _draft),
+                          CountTab(
+                            key: ValueKey(_countTabVersion),
+                            draft: _draft,
+                            store: _countStore,
+                            onChanged: _loadDraft,
+                          ),
                           const PlaceholderTab(
                             title: 'Tally tab',
                             note: 'The menu grid comes in Feature 5.',
