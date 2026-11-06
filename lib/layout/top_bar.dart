@@ -14,8 +14,8 @@ class TopBar extends StatelessWidget {
     this.onSubmit,
   });
 
-  // date of the count being worked on
-  final DateTime businessDate;
+  // date of the count being worked on, null while it is still loading
+  final DateTime? businessDate;
   // false = Draft, true = Submitted
   final bool isSubmitted;
   // button actions, null makes the button greyed out (not built yet)
@@ -25,7 +25,8 @@ class TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // shows the date like "Sat, Oct 31"
-    final dateText = DateFormat('EEE, MMM d').format(businessDate);
+    final date = businessDate;
+    final dateText = date == null ? '' : DateFormat('EEE, MMM d').format(date);
 
     return Container(
       height: 68,

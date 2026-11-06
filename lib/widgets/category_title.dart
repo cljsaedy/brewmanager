@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 
-// small caramel title above each category group in the owner tables, like "SYRUPS"
+// small caramel title above each category group in the tables, like "SYRUPS"
 class CategoryTitle extends StatelessWidget {
   const CategoryTitle(this.category, {super.key});
 

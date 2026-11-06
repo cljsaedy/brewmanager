@@ -14,6 +14,9 @@ class BusinessDay {
   // draft, submitted or closed
   final String status;
 
+  // the business date as a DateTime, for screens that show it like "Sat, Oct 31"
+  DateTime get date => DateTime.parse(businessDate);
+
   factory BusinessDay.fromRow(Map<String, Object?> row) {
     return BusinessDay(
       id: row['id'] as int,

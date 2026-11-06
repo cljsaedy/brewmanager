@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:brewmanager/data/count_store.dart';
 import 'package:brewmanager/data/owner_pin_store.dart';
 import 'package:brewmanager/layout/app_layout.dart';
 import 'package:brewmanager/theme/app_theme.dart';
@@ -29,7 +30,10 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
-        home: AppLayout(openPinStore: () async => store),
+        home: AppLayout(
+          openPinStore: () async => store,
+          openCountStore: () async => CountStore(db),
+        ),
       ),
     );
   }
@@ -84,7 +88,7 @@ void main() {
 
       await tester.tap(find.text('Lock and exit'));
       await tester.pumpAndSettle();
-      expect(find.text('Count tab'), findsOneWidget);
+      expect(find.text('Logbook'), findsOneWidget);
       expect(find.text('Submit'), findsOneWidget);
 
       expect(await tester.runAsync(() => store.checkPin('1234')), isTrue);
@@ -138,7 +142,7 @@ void main() {
 
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(find.text('Count tab'), findsOneWidget);
+    expect(find.text('Logbook'), findsOneWidget);
 
     // opening again asks for the pin again
     await tapOwner(tester);
@@ -163,7 +167,7 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpAndSettle();
 
-    expect(find.text('Count tab'), findsOneWidget);
+    expect(find.text('Logbook'), findsOneWidget);
     expect(find.text('Lock and exit'), findsNothing);
   });
 

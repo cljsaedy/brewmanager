@@ -26,7 +26,11 @@ Future<void> main() async {
 }
 
 class BrewManagerApp extends StatelessWidget {
-  const BrewManagerApp({super.key});
+  const BrewManagerApp({super.key, this.home = const AppLayout()});
+
+  // barista has no login so the app opens straight to the app layout (count tab)
+  // tests pass their own layout here so it doesnt open the real database
+  final Widget home;
 
   @override
   Widget build(BuildContext context) {
@@ -35,8 +39,9 @@ class BrewManagerApp extends StatelessWidget {
       // hide the red "debug" ribbon on the top right
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
-      // barista has no login so the app opens straight to the app layout (count tab)
-      home: const AppLayout(),
+      // lets the app layout know when the owner section closes
+      navigatorObservers: [appRouteObserver],
+      home: home,
     );
   }
 }
