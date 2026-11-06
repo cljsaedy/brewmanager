@@ -131,16 +131,50 @@ void main() {
     expect(find.text('container'), findsOneWidget);
   });
 
-  testWidgets('number items show in pcs with no Out', (tester) async {
+  testWidgets('number items show pieces used in Out', (tester) async {
     await showTab(
       tester,
-      draftOf([CountRow(line: line(start: 12, end: 9), item: friesPack)]),
+      draftOf([
+        CountRow(line: line(start: 12, inQty: 5, end: 9), item: friesPack),
+      ]),
     );
 
     expect(find.text('pcs'), findsOneWidget);
     expect(find.text('12'), findsOneWidget);
+    expect(find.text('5'), findsOneWidget);
     expect(find.text('9'), findsOneWidget);
+    // 12 + 5 - 9 = 8
+    expect(find.text('8'), findsOneWidget);
+    expect(find.text('—'), findsNothing);
+  });
+
+  testWidgets('a number item on its opening count shows no usage', (
+    tester,
+  ) async {
+    await showTab(
+      tester,
+      draftOf([
+        CountRow(line: line(end: 20, isOpening: true), item: friesPack),
+      ]),
+    );
+
+    // start 0 - end 20 would say -20
     expect(find.text('—'), findsOneWidget);
+    expect(find.text('-20'), findsNothing);
+  });
+
+  testWidgets('container Out stays containers finished', (tester) async {
+    await showTab(
+      tester,
+      draftOf([
+        CountRow(line: line(start: 6000, out: 1, end: 2000), item: syrup),
+      ]),
+    );
+
+    // 3 bottles at the start, 1 at the end, but only 1 was finished
+    expect(find.text('3'), findsOneWidget);
+    expect(find.text('1'), findsWidgets);
+    expect(find.text('2'), findsNothing);
   });
 
   testWidgets('each category gets one title, ignoring case', (tester) async {

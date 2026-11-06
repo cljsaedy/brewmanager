@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/count_line.dart';
+import '../logic/count_math.dart';
 import '../logic/formatting.dart';
 import '../logic/units.dart';
 import '../theme/app_theme.dart';
@@ -155,7 +156,7 @@ class CountTab extends StatelessWidget {
 
   // one logbook row
   // container items show in containers since that is how the barista thinks ("2.75"), rule 1
-  // number items show in pcs and have no Out, only containers get finished
+  // number items show in pcs
   Widget _row(CountRow row) {
     final line = row.line;
     final item = row.item;
@@ -199,10 +200,22 @@ class CountTab extends StatelessWidget {
           ),
           _number(shown(line.startQty)),
           _number(shown(line.inQty)),
-          _number(isContainer ? line.outCount.toString() : '—'),
+          _number(_outText(line, isContainer)),
           _number(shown(line.endQty), bold: true),
         ],
       ),
+    );
+  }
+
+  // what the Out column shows (rule 3)
+  // container items = containers finished
+  // number items = pieces used, worked out here and not saved, read only for now
+  // an opening count has no usage (rule 7) so it shows a dash, its Start of 0 would give a wrong number
+  String _outText(CountLine line, bool isContainer) {
+    if (isContainer) return line.outCount.toString();
+    if (line.isOpening) return '—';
+    return formatAmount(
+      amountUsed(start: line.startQty, inQty: line.inQty, end: line.endQty),
     );
   }
 

@@ -32,3 +32,15 @@ double containerEnd({
 bool containerIsExact({required double level, required double? exactQty}) {
   return exactQty != null || level == levelNone;
 }
+
+// how much of an item was used in one day, in base units (rule 7)
+// used = start + in - end, like fries 8 at the start, none in, 6 at the end = 2 used
+// it can go below 0 when the barista counts more than the logbook says was there
+// dont use this on an opening count, its Start is 0 so the answer means nothing (rule 3)
+double amountUsed({
+  required double start,
+  required double inQty,
+  required double end,
+}) {
+  return roundAmount(start + inQty - end);
+}

@@ -49,6 +49,26 @@ void main() {
     });
   });
 
+  group('amountUsed', () {
+    test('start plus in minus end', () {
+      expect(amountUsed(start: 8, inQty: 0, end: 6), 2);
+      expect(amountUsed(start: 8, inQty: 5, end: 6), 7);
+    });
+
+    test('nothing moved is 0', () {
+      expect(amountUsed(start: 8, inQty: 0, end: 8), 0);
+    });
+
+    test('counting more than was there goes below 0', () {
+      expect(amountUsed(start: 8, inQty: 0, end: 10), -2);
+    });
+
+    test('no tiny decimal leftovers', () {
+      // 0.3 - 0.1 is 0.19999999999999998 on a computer
+      expect(amountUsed(start: 0.3, inQty: 0, end: 0.1), 0.2);
+    });
+  });
+
   group('containerIsExact', () {
     test('no container open is exact', () {
       expect(containerIsExact(level: levelNone, exactQty: null), isTrue);
