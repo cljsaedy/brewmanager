@@ -19,7 +19,7 @@ class MenuItem {
   final String category;
   // optional price, only shown in the tally to help pick the right item, never added up
   final double? priceHint;
-  // true = "doesn't use tracked stock", never shows as "no recipe yet"
+  // true = "not compared (no recipe needed)", never shows as "no recipe yet"
   final bool noStock;
   final bool isArchived;
 

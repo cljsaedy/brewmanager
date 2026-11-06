@@ -361,11 +361,53 @@ void main() {
           )).map((row) => row['name']).toSet();
       expect(await columns('menu_items'), contains('no_stock'));
       expect(await columns('recipe_lines'), contains('menu_item_id'));
+      // made with the newest table, so the 2 -> 3 step must not add it again
+      expect(await columns('recipe_lines'), contains('input_unit'));
       expect(await columns('tally_lines'), contains('menu_item_id'));
 
       // the stock item from version 1 is still there
       final stock = await upgraded.query('stock_items');
       expect(stock.single['name'], 'Milk');
+
+      await upgraded.close();
+    });
+
+    test('version 2 recipe lines stay and get an empty input_unit', () async {
+      // a version 2 file: recipe_lines without input_unit (just the columns that matter)
+      final old = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 2,
+          onCreate: (db, version) async {
+            await db.execute('''
+              CREATE TABLE recipe_lines (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                menu_item_id INTEGER NOT NULL,
+                stock_item_id INTEGER NOT NULL,
+                amount REAL NOT NULL
+              )
+            ''');
+            await db.insert('recipe_lines', {
+              'menu_item_id': 1,
+              'stock_item_id': 1,
+              'amount': 150,
+            });
+          },
+        ),
+      );
+      await old.close();
+
+      final upgraded = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: DatabaseHelper.version,
+          onUpgrade: DatabaseHelper.onUpgrade,
+        ),
+      );
+
+      final line = (await upgraded.query('recipe_lines')).single;
+      expect(line['amount'], 150);
+      expect(line['input_unit'], isNull);
 
       await upgraded.close();
     });

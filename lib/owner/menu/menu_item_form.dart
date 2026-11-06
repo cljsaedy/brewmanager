@@ -50,7 +50,7 @@ class _MenuItemFormState extends State<MenuItemForm> {
   final _categoryController = TextEditingController();
   final _priceController = TextEditingController();
 
-  // the "doesn't use tracked stock" checkbox
+  // the "not compared" checkbox
   bool _noStock = false;
   // true when the item has recipe lines, then the checkbox cant be ticked (rule 6)
   bool _hasRecipe = false;
@@ -316,7 +316,8 @@ class _MenuItemFormState extends State<MenuItemForm> {
     );
   }
 
-  // "doesn't use tracked stock" checkbox, for things like hot water or a service charge
+  // "not compared" checkbox (no_stock in the db), for things like hot water,
+  // or food made from batter since prep recipes are not modeled
   // these items never show as "no recipe yet" (rule 6)
   // greyed out while the item has recipe lines, so lines never get dropped by a tick
   Widget _noStockBox(TextTheme text) {
@@ -333,7 +334,7 @@ class _MenuItemFormState extends State<MenuItemForm> {
           onChanged: canChange
               ? (ticked) => setState(() => _noStock = ticked ?? false)
               : null,
-          title: const Text("Doesn't use tracked stock"),
+          title: const Text('Not compared (no recipe needed)'),
           controlAffinity: ListTileControlAffinity.leading,
           contentPadding: EdgeInsets.zero,
         ),

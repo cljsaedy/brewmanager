@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 
+import '../logic/formatting.dart';
 import '../logic/units.dart';
 import 'menu_item_store.dart';
 
@@ -13,6 +14,7 @@ class RecipeLine {
     required this.stockName,
     required this.baseUnit,
     required this.amount,
+    this.inputUnit,
   });
 
   final int id;
@@ -22,6 +24,29 @@ class RecipeLine {
   final BaseUnit baseUnit;
   // in the stock item's base unit, like 150 (ml)
   final double amount;
+  // the unit the owner typed, like 'oz', null = typed in the base unit
+  // only for showing, the math always uses amount
+  final String? inputUnit;
+
+  // the unit to show the amount in, the base unit when none was saved
+  InputUnit get shownUnit {
+    final units = inputUnitsFor(baseUnit);
+    return units.firstWhere(
+      (unit) => unit.label == inputUnit,
+      orElse: () => units.first,
+    );
+  }
+
+  // the amount back in the typed unit, like 177.441 ml -> 6 (oz)
+  double get shownAmount => roundAmount(amount / shownUnit.factor);
+
+  // what the screen shows: "6 oz (177.44 ml)", or just "150 ml" when typed in the base unit
+  String get amountText {
+    final base = formatWithUnit(amount, baseUnit.name);
+    final unit = shownUnit;
+    if (unit.factor == 1) return base;
+    return '${formatWithUnit(shownAmount, unit.label)} ($base)';
+  }
 }
 
 // the recipe of each menu item = how much of each stock item it uses (rule 6)
@@ -36,7 +61,7 @@ class RecipeStore {
   Future<List<RecipeLine>> lines(int menuItemId) async {
     final rows = await _db.rawQuery(
       '''
-      SELECT r.id, r.menu_item_id, r.stock_item_id, r.amount,
+      SELECT r.id, r.menu_item_id, r.stock_item_id, r.amount, r.input_unit,
              s.name AS stock_name, s.base_unit
       FROM recipe_lines r
       JOIN stock_items s ON s.id = r.stock_item_id
@@ -54,14 +79,21 @@ class RecipeStore {
             stockName: row['stock_name'] as String,
             baseUnit: BaseUnit.values.byName(row['base_unit'] as String),
             amount: (row['amount'] as num).toDouble(),
+            inputUnit: row['input_unit'] as String?,
           ),
         )
         .toList();
   }
 
   // adds a stock item to a menu item's recipe, amount already in the stock item's base unit
+  // inputUnit = the unit the owner typed, null when it was the base unit
   // gives back the new line id
-  Future<int> addLine(int menuItemId, int stockItemId, double amount) async {
+  Future<int> addLine(
+    int menuItemId,
+    int stockItemId,
+    double amount, {
+    String? inputUnit,
+  }) async {
     _checkAmount(amount);
 
     final menuRows = await _db.query(
@@ -79,7 +111,7 @@ class RecipeStore {
     }
     if (menu['no_stock'] == 1) {
       throw MenuItemException(
-        "Untick \"Doesn't use tracked stock\" before adding to the recipe.",
+        'Untick "Not compared (no recipe needed)" before adding to the recipe.',
       );
     }
 
@@ -114,6 +146,7 @@ class RecipeStore {
       'menu_item_id': menuItemId,
       'stock_item_id': stockItemId,
       'amount': amount,
+      'input_unit': inputUnit,
       'created_at': _clock().toIso8601String(),
     });
   }
@@ -122,7 +155,11 @@ class RecipeStore {
   // both use the same time, so for any moment exactly one of them was active:
   // a day submitted before that time used the old amount, after it the new one
   // gives back the id of the line that is active now
-  Future<int> changeAmount(int lineId, double amount) async {
+  Future<int> changeAmount(
+    int lineId,
+    double amount, {
+    String? inputUnit,
+  }) async {
     _checkAmount(amount);
     final now = _clock().toIso8601String();
 
@@ -138,8 +175,12 @@ class RecipeStore {
       }
       final old = rows.first;
 
-      // same amount = nothing to change, dont make a new line for it
-      if ((old['amount'] as num).toDouble() == amount) return lineId;
+      // same amount and unit = nothing to change, dont make a new line for it
+      // 1000 ml changed to 1 L is the same amount but a new unit to show, so that one goes through
+      if ((old['amount'] as num).toDouble() == amount &&
+          old['input_unit'] == inputUnit) {
+        return lineId;
+      }
 
       await txn.update(
         'recipe_lines',
@@ -151,6 +192,7 @@ class RecipeStore {
         'menu_item_id': old['menu_item_id'],
         'stock_item_id': old['stock_item_id'],
         'amount': amount,
+        'input_unit': inputUnit,
         'created_at': now,
       });
     });

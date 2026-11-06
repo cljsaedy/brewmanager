@@ -142,7 +142,7 @@ void main() {
     expect(find.text('1,500'), findsOneWidget);
     expect(find.text('1 stock item'), findsOneWidget);
     expect(find.text('No recipe yet'), findsOneWidget);
-    expect(find.text("Doesn't use stock"), findsOneWidget);
+    expect(find.text('Not compared'), findsOneWidget);
   });
 
   testWidgets('adds an item, chip fills the category, price is saved', (
@@ -249,7 +249,7 @@ void main() {
     await tester.pump();
     await tapSave(tester);
 
-    expect(find.text("Doesn't use stock"), findsOneWidget);
+    expect(find.text('Not compared'), findsOneWidget);
   });
 
   group('recipe', () {
@@ -382,6 +382,35 @@ void main() {
 
       await tapButton(tester, 'Add');
       expect((await savedLines(tester, latte)).single.amount, 59.147);
+      // both show, so what was typed stays in sight
+      expect(find.text('2 oz (59.15 ml)'), findsOneWidget);
+
+      // tapping the line opens it in the unit it was typed in
+      await tapVisible(tester, find.text('2 oz (59.15 ml)'));
+      await tester.pumpAndSettle();
+      final box = tester.widget<TextField>(
+        find.byKey(const Key('recipe_amount_field')),
+      );
+      expect(box.controller!.text, '2');
+      expect(find.text('oz'), findsWidgets);
+    });
+
+    testWidgets('a decimal amount like 2.96 g is saved and shown', (
+      tester,
+    ) async {
+      await addStock(tester, [beans]);
+      final latte = await addItem(
+        tester,
+        const MenuItem(name: 'Latte', category: 'Coffee'),
+      );
+      await openItem(tester, 'Latte');
+
+      await pickStock(tester, 'Espresso beans');
+      await fill(tester, 'recipe_amount_field', '2.96');
+      await tapButton(tester, 'Add');
+
+      expect(find.text('2.96 g'), findsOneWidget);
+      expect((await savedLines(tester, latte)).single.amount, 2.96);
     });
 
     testWidgets('a g item only offers weight units', (tester) async {

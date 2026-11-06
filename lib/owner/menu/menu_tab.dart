@@ -331,12 +331,12 @@ class _MenuTabState extends State<MenuTab> {
   }
 
   // what the recipe column says:
-  // "Doesn't use stock" for no-stock items, "2 stock items" when it has a recipe,
+  // "Not compared" for no-stock items, "2 stock items" when it has a recipe,
   // an amber "No recipe yet" chip otherwise, so the owner sees what is left to set up
   Widget _recipeStatus(MenuItem item) {
     if (item.noStock) {
       return const Text(
-        "Doesn't use stock",
+        'Not compared',
         style: TextStyle(color: AppColors.textMuted),
       );
     }

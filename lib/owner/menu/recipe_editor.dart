@@ -99,13 +99,13 @@ class _RecipeEditorState extends State<RecipeEditor> {
     });
   }
 
-  // tapping a line puts it in the box, shown in the base unit
+  // tapping a line puts it in the box, in the unit the owner typed it in
   void _startEdit(RecipeLine line) {
     setState(() {
       _editing = line;
       _pickedStockId = null;
-      _unit = inputUnitsFor(line.baseUnit).first;
-      _amountController.text = plainNumber(line.amount);
+      _unit = line.shownUnit;
+      _amountController.text = plainNumber(line.shownAmount);
       _error = null;
     });
   }
@@ -135,18 +135,26 @@ class _RecipeEditorState extends State<RecipeEditor> {
     }
     // like 1 oz -> 29.5735 ml, recipes are always saved in the base unit (rule 1)
     final amount = toBaseUnit(typed, unit, base);
+    // the typed unit is saved too so the line can show "6 oz (177.44 ml)"
+    // factor 1 = the base unit itself, nothing extra to remember
+    final inputUnit = unit.factor == 1 ? null : unit.label;
 
     setState(() => _busy = true);
     try {
       final editing = _editing;
       if (editing != null) {
         // archives the old line and adds a new one, see RecipeStore (rule 12)
-        await widget.recipes.changeAmount(editing.id, amount);
+        await widget.recipes.changeAmount(
+          editing.id,
+          amount,
+          inputUnit: inputUnit,
+        );
       } else {
         await widget.recipes.addLine(
           widget.menuItemId,
           _pickedStockId!,
           amount,
+          inputUnit: inputUnit,
         );
       }
       await _afterChange();
@@ -215,15 +223,23 @@ class _RecipeEditorState extends State<RecipeEditor> {
           ),
           child: Row(
             children: [
+              // name above the amount, "6 oz (177.44 ml)" is too long to share a line in this narrow panel
               Expanded(
-                child: Text(
-                  line.stockName,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        line.stockName,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      Text(line.amountText),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(width: 8),
-              Text(formatWithUnit(line.amount, line.baseUnit.name)),
               IconButton(
                 onPressed: _busy ? null : () => _remove(line),
                 icon: const Icon(Icons.close, size: 18),

@@ -177,6 +177,13 @@ const List<String> schemaStatements = [
   'CREATE INDEX idx_outbox_status ON outbox (status)',
 ];
 
+// recipe_lines.input_unit = the unit the owner typed the amount in, like 'oz'
+// only for showing "6 oz (177.44 ml)", the math always uses amount in the base unit
+// null = typed in the base unit itself
+// in one place since the new table and the version 3 upgrade both need the same rule
+const String recipeInputUnitCheck =
+    "CHECK (input_unit IS NULL OR input_unit IN ('g','kg','ml','L','oz','pcs'))";
+
 // the menu, recipe and tally tables, kept in their own list so the version 2 upgrade
 // can make them again (see DatabaseHelper.onUpgrade)
 // there is no sizes table, every size is its own menu item like "Iced Americano (Large)" (rule 6)
@@ -210,6 +217,7 @@ const List<String> menuTableStatements = [
     menu_item_id  INTEGER NOT NULL REFERENCES menu_items(id),
     stock_item_id INTEGER NOT NULL REFERENCES stock_items(id),
     amount        REAL NOT NULL CHECK (amount > 0),
+    input_unit    TEXT $recipeInputUnitCheck,
     is_archived   INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
     created_at    TEXT NOT NULL,
     archived_at   TEXT,

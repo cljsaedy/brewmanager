@@ -13,8 +13,9 @@ class DatabaseHelper {
   static const String fileName = 'brewmanager.db';
 
   // schema version, bump this + add upgrade code when the tables change after the app is in use
-  // 1 = first schema, 2 = no menu_sizes table (every size is its own menu item)
-  static const int version = 2;
+  // 1 = first schema, 2 = no menu_sizes table (every size is its own menu item),
+  // 3 = recipe_lines.input_unit (the unit the owner typed)
+  static const int version = 3;
 
   // the open database, null until first used
   static Database? _db;
@@ -75,6 +76,15 @@ class DatabaseHelper {
       for (final statement in menuTableStatements) {
         await db.execute(statement);
       }
+    } else if (oldVersion < 3) {
+      // 2 -> 3: recipe lines remember the unit the owner typed
+      // "else" because the 1 -> 2 part above already makes recipe_lines with this column,
+      // adding it again would fail
+      // ADD COLUMN keeps every row, old lines get null = shown in the base unit
+      await db.execute(
+        'ALTER TABLE recipe_lines ADD COLUMN input_unit TEXT '
+        '$recipeInputUnitCheck',
+      );
     }
   }
 

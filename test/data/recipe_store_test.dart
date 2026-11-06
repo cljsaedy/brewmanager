@@ -88,6 +88,82 @@ void main() {
     expect(lines.first.amount, 18);
   });
 
+  group('typed unit', () {
+    test('a line typed in another unit shows both', () async {
+      await recipes.addLine(latte, milk, 177.441, inputUnit: 'oz');
+
+      final line = (await recipes.lines(latte)).single;
+      expect(line.amount, 177.441);
+      expect(line.amountText, '6 oz (177.44 ml)');
+      expect(line.shownUnit.label, 'oz');
+      expect(line.shownAmount, 6);
+    });
+
+    test('other conversions show both too', () async {
+      final beans = await addStock('Espresso beans', unit: BaseUnit.g);
+      await recipes.addLine(latte, milk, 1000, inputUnit: 'L');
+      await recipes.addLine(latte, beans, 500, inputUnit: 'kg');
+
+      final lines = await recipes.lines(latte);
+      expect(lines.map((line) => line.amountText), [
+        '0.5 kg (500 g)',
+        '1 L (1,000 ml)',
+      ]);
+    });
+
+    test('a line typed in the base unit shows one amount', () async {
+      await recipes.addLine(latte, milk, 150);
+      expect((await recipes.lines(latte)).single.amountText, '150 ml');
+    });
+
+    test('decimals are kept, shown with up to 2', () async {
+      final beans = await addStock('Espresso beans', unit: BaseUnit.g);
+      final sugar = await addStock('Sugar', unit: BaseUnit.g);
+      await recipes.addLine(latte, beans, 2.96);
+      await recipes.addLine(latte, sugar, 1.234);
+
+      final lines = await recipes.lines(latte);
+      expect(lines[0].amount, 2.96);
+      expect(lines[0].amountText, '2.96 g');
+      // saved exactly, only the screen text is cut to 2 decimals
+      expect(lines[1].amount, 1.234);
+      expect(lines[1].amountText, '1.23 g');
+    });
+
+    test('changing the amount saves the new unit', () async {
+      final id = await recipes.addLine(latte, milk, 150);
+      await recipes.changeAmount(id, 59.147, inputUnit: 'oz');
+      expect((await recipes.lines(latte)).single.amountText, '2 oz (59.15 ml)');
+    });
+
+    test('same amount in a new unit still updates the line', () async {
+      final id = await recipes.addLine(latte, milk, 1000);
+      final newId = await recipes.changeAmount(id, 1000, inputUnit: 'L');
+
+      expect(newId, isNot(id));
+      expect((await recipes.lines(latte)).single.amountText, '1 L (1,000 ml)');
+    });
+
+    test('restoring a menu item keeps the typed unit', () async {
+      await recipes.addLine(latte, milk, 177.441, inputUnit: 'oz');
+      await menu.archive(latte);
+      now = DateTime.utc(2026, 11, 2);
+      await menu.restore(latte);
+
+      expect(
+        (await recipes.lines(latte)).single.amountText,
+        '6 oz (177.44 ml)',
+      );
+    });
+
+    test('the db refuses a unit it does not know', () async {
+      await expectLater(
+        () => recipes.addLine(latte, milk, 150, inputUnit: 'cups'),
+        throwsA(isA<DatabaseException>()),
+      );
+    });
+  });
+
   group('add rules', () {
     test('amount must be more than 0', () async {
       await expectProblem(
@@ -118,7 +194,7 @@ void main() {
       );
       await expectProblem(
         () => recipes.addLine(water, milk, 150),
-        "Untick \"Doesn't use tracked stock\" before adding to the recipe.",
+        'Untick "Not compared (no recipe needed)" before adding to the recipe.',
       );
 
       await menu.archive(latte);

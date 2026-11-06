@@ -92,11 +92,11 @@ class MenuItemStore {
       throw MenuNameTakenException(existing);
     }
 
-    // "doesn't use tracked stock" only when the recipe is empty, so no lines get removed silently (rule 6)
+    // "not compared" only when the recipe is empty, so no lines get removed silently (rule 6)
     if (item.noStock && await activeLineCount(id) > 0) {
       throw MenuItemException(
-        "Remove the recipe lines first, then tick \"Doesn't use tracked "
-        'stock".',
+        'Remove the recipe lines first, then tick "Not compared (no recipe '
+        'needed)".',
       );
     }
 
@@ -176,7 +176,7 @@ class MenuItemStore {
       // the lines archived together with the item, and if their stock item is still active
       final lines = await txn.rawQuery(
         '''
-        SELECT r.stock_item_id, r.amount, s.name AS stock_name, s.is_archived AS stock_archived
+        SELECT r.stock_item_id, r.amount, r.input_unit, s.name AS stock_name, s.is_archived AS stock_archived
         FROM recipe_lines r
         JOIN stock_items s ON s.id = r.stock_item_id
         WHERE r.menu_item_id = ? AND r.archived_at = ?
@@ -194,6 +194,7 @@ class MenuItemStore {
           'menu_item_id': id,
           'stock_item_id': line['stock_item_id'],
           'amount': line['amount'],
+          'input_unit': line['input_unit'],
           'created_at': now,
         });
       }

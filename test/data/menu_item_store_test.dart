@@ -185,8 +185,8 @@ void main() {
             noStock: true,
           ),
         ),
-        "Remove the recipe lines first, then tick \"Doesn't use tracked "
-        'stock".',
+        'Remove the recipe lines first, then tick "Not compared (no recipe '
+        'needed)".',
       );
 
       // archived lines dont count, only active ones
