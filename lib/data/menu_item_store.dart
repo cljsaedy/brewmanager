@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 
+import '../logic/clock.dart';
 import 'menu_item.dart';
 
 // thrown when a menu item or recipe breaks a rule, message is plain words the screen can show
@@ -22,11 +23,6 @@ class MenuNameTakenException implements Exception {
   @override
   String toString() => 'The name "${existing.name}" is already used.';
 }
-
-// a function that gives the current time, the stores save it as utc iso text like 2026-11-01T05:30:00.000Z
-// the app uses utcNow, tests pass their own clock so the saved times are known
-typedef Clock = DateTime Function();
-DateTime utcNow() => DateTime.now().toUtc();
 
 // add, edit, list, archive and restore menu items
 // items are never deleted, only archived, so old tallies and reports still find them (rule 12)

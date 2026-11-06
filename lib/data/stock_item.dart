@@ -19,6 +19,7 @@ class StockItem {
     required this.lowMode,
     required this.lowValue,
     this.isArchived = false,
+    this.needsOpeningCount = false,
   });
 
   // null for a new item that is not saved yet, the db gives the id
@@ -36,6 +37,8 @@ class StockItem {
   // the low-stock level, in containers or in base units depending on lowMode
   final double lowValue;
   final bool isArchived;
+  // true after a restore, until the item's opening count is submitted (rule 3)
+  final bool needsOpeningCount;
 
   // the container word to show on screens, 'container' when the owner left it empty
   String get containerName {
@@ -58,10 +61,11 @@ class StockItem {
       lowMode: LowMode.values.byName(row['low_mode'] as String),
       lowValue: (row['low_value'] as num).toDouble(),
       isArchived: row['is_archived'] == 1,
+      needsOpeningCount: row['needs_opening_count'] == 1,
     );
   }
 
-  // turns this item into a row for the db (id and is_archived are left out, the store handles those)
+  // turns this item into a row for the db (id, is_archived and needs_opening_count are left out, the stores handle those)
   // number items never keep a container label or size
   // empty category is saved as 'Other', empty container label is saved as null
   Map<String, Object?> toRow() {
@@ -104,6 +108,7 @@ class StockItem {
       lowMode: lowMode ?? this.lowMode,
       lowValue: lowValue ?? this.lowValue,
       isArchived: isArchived,
+      needsOpeningCount: needsOpeningCount,
     );
   }
 }

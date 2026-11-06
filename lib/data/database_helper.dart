@@ -14,8 +14,9 @@ class DatabaseHelper {
 
   // schema version, bump this + add upgrade code when the tables change after the app is in use
   // 1 = first schema, 2 = no menu_sizes table (every size is its own menu item),
-  // 3 = recipe_lines.input_unit (the unit the owner typed)
-  static const int version = 3;
+  // 3 = recipe_lines.input_unit (the unit the owner typed),
+  // 4 = stock_items.needs_opening_count and count_lines.is_opening (opening count, rule 3)
+  static const int version = 4;
 
   // the open database, null until first used
   static Database? _db;
@@ -84,6 +85,18 @@ class DatabaseHelper {
       await db.execute(
         'ALTER TABLE recipe_lines ADD COLUMN input_unit TEXT '
         '$recipeInputUnitCheck',
+      );
+    }
+
+    // 3 -> 4: the opening count flags
+    // not in the "else" above since no earlier step made these 2 tables again, every old db needs this
+    // ADD COLUMN keeps every row, old rows get 0 = not an opening count
+    if (oldVersion < 4) {
+      await db.execute(
+        'ALTER TABLE stock_items ADD COLUMN $stockNeedsOpeningColumn',
+      );
+      await db.execute(
+        'ALTER TABLE count_lines ADD COLUMN $lineIsOpeningColumn',
       );
     }
   }

@@ -332,6 +332,9 @@ void main() {
               'CREATE TABLE tally_lines (id INTEGER PRIMARY KEY, '
               'day_id INTEGER, menu_size_id INTEGER)',
             );
+            await db.execute(
+              'CREATE TABLE count_lines (id INTEGER PRIMARY KEY)',
+            );
           },
         ),
       );
@@ -365,9 +368,11 @@ void main() {
       expect(await columns('recipe_lines'), contains('input_unit'));
       expect(await columns('tally_lines'), contains('menu_item_id'));
 
-      // the stock item from version 1 is still there
+      // the stock item from version 1 is still there, with the 3 -> 4 flag
       final stock = await upgraded.query('stock_items');
       expect(stock.single['name'], 'Milk');
+      expect(stock.single['needs_opening_count'], 0);
+      expect(await columns('count_lines'), contains('is_opening'));
 
       await upgraded.close();
     });
@@ -392,6 +397,12 @@ void main() {
               'stock_item_id': 1,
               'amount': 150,
             });
+            await db.execute(
+              'CREATE TABLE stock_items (id INTEGER PRIMARY KEY)',
+            );
+            await db.execute(
+              'CREATE TABLE count_lines (id INTEGER PRIMARY KEY)',
+            );
           },
         ),
       );
@@ -408,6 +419,44 @@ void main() {
       final line = (await upgraded.query('recipe_lines')).single;
       expect(line['amount'], 150);
       expect(line['input_unit'], isNull);
+
+      await upgraded.close();
+    });
+
+    test('version 3 rows stay and get the opening count flags', () async {
+      // a version 3 file: no opening count columns yet (just the columns that matter)
+      final old = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 3,
+          onCreate: (db, version) async {
+            await db.execute(
+              'CREATE TABLE stock_items (id INTEGER PRIMARY KEY, name TEXT)',
+            );
+            await db.execute(
+              'CREATE TABLE count_lines (id INTEGER PRIMARY KEY, end_qty REAL)',
+            );
+            await db.insert('stock_items', {'name': 'Milk'});
+            await db.insert('count_lines', {'end_qty': 3});
+          },
+        ),
+      );
+      await old.close();
+
+      final upgraded = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: DatabaseHelper.version,
+          onUpgrade: DatabaseHelper.onUpgrade,
+        ),
+      );
+
+      final stock = (await upgraded.query('stock_items')).single;
+      expect(stock['name'], 'Milk');
+      expect(stock['needs_opening_count'], 0);
+      final line = (await upgraded.query('count_lines')).single;
+      expect(line['end_qty'], 3);
+      expect(line['is_opening'], 0);
 
       await upgraded.close();
     });

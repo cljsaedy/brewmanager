@@ -227,6 +227,25 @@ void main() {
       expect(await store.list(archived: true), isEmpty);
     });
 
+    test('a restore marks the item for an opening count', () async {
+      final id = await store.add(syrup());
+      expect((await store.list()).single.needsOpeningCount, isFalse);
+
+      await store.archive(id);
+      await store.restore(id);
+      expect((await store.list()).single.needsOpeningCount, isTrue);
+    });
+
+    test('editing a restored item keeps the mark', () async {
+      final id = await store.add(syrup());
+      await store.archive(id);
+      await store.restore(id);
+
+      final item = (await store.list()).single;
+      await store.update(item.copyWith(lowValue: 3));
+      expect((await store.list()).single.needsOpeningCount, isTrue);
+    });
+
     // adds these menu items, each with a recipe line using the stock item
     // archived = true puts in archived recipe lines (old amounts kept for reports)
     Future<void> addRecipes(

@@ -1,3 +1,14 @@
+// stock_items column: 1 = restored from archive, so its next count is an opening count (rule 3)
+// kept here so the new table and the version 4 upgrade make the exact same column
+const String stockNeedsOpeningColumn =
+    'needs_opening_count INTEGER NOT NULL DEFAULT 0 '
+    'CHECK (needs_opening_count IN (0, 1))';
+
+// count_lines column: 1 = this line is the item's opening count, it only sets the starting stock (rule 3)
+// saved on the line so the day still knows it after needs_opening_count gets cleared
+const String lineIsOpeningColumn =
+    'is_opening INTEGER NOT NULL DEFAULT 0 CHECK (is_opening IN (0, 1))';
+
 // all the CREATE TABLE / CREATE INDEX statements for the database, run once when the db file is first made
 //
 // notes for every table:
@@ -36,6 +47,7 @@ const List<String> schemaStatements = [
     low_value       REAL NOT NULL DEFAULT 0 CHECK (low_value >= 0),
     sort_order      INTEGER NOT NULL DEFAULT 0,
     is_archived     INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
+    $stockNeedsOpeningColumn,
     -- "IS NOT NULL" is needed since NULL > 0 gives unknown, and sqlite lets unknown pass a CHECK
     CHECK (count_type = 'number'
         OR (container_size IS NOT NULL AND container_size > 0)),
@@ -83,6 +95,7 @@ const List<String> schemaStatements = [
     end_qty        REAL NOT NULL DEFAULT 0 CHECK (end_qty >= 0),
     end_is_exact   INTEGER NOT NULL DEFAULT 1 CHECK (end_is_exact IN (0, 1)),
     touched        INTEGER NOT NULL DEFAULT 0 CHECK (touched IN (0, 1)),
+    $lineIsOpeningColumn,
     note           TEXT,
     UNIQUE (day_id, stock_item_id)
   )

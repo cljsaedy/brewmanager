@@ -155,16 +155,20 @@ class StockItemStore {
   Future<void> archive(int id) async {
     final problem = await archiveProblem(id);
     if (problem != null) throw StockItemException(problem);
-    await _setArchived(id, true);
+    await _db.update(
+      'stock_items',
+      {'is_archived': 1},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   // brings an archived item back, with all its old settings
-  Future<void> restore(int id) => _setArchived(id, false);
-
-  Future<void> _setArchived(int id, bool archived) async {
+  // its stock could be anything by now, so the next count is an opening count from 0 (rule 3)
+  Future<void> restore(int id) async {
     await _db.update(
       'stock_items',
-      {'is_archived': archived ? 1 : 0},
+      {'is_archived': 0, 'needs_opening_count': 1},
       where: 'id = ?',
       whereArgs: [id],
     );
