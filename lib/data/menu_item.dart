@@ -49,6 +49,14 @@ class MenuItem {
   }
 }
 
+// the message after a restore, names the recipe lines that could not come back
+// leftOut = the archived stock items MenuItemStore.restore gave back
+String restoredMessage(String name, List<String> leftOut) {
+  if (leftOut.isEmpty) return 'Restored $name.';
+  return 'Restored $name. Left out archived stock items: '
+      '${leftOut.join(', ')}.';
+}
+
 // checks the menu item rules, gives back the first problem in plain words, or null if all good
 // the store uses it before saving and the form uses it to show the message
 String? menuItemProblem(MenuItem item) {

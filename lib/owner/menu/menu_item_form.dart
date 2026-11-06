@@ -173,10 +173,46 @@ class _MenuItemFormState extends State<MenuItemForm> {
   Future<void> _restoreMatch() async {
     final match = _archivedMatch!;
     final leftOut = await widget.store.restore(match.id!);
-    final note = leftOut.isEmpty
-        ? ''
-        : ' Left out archived stock items: ${leftOut.join(', ')}.';
-    widget.onDone('Restored ${match.name}.$note');
+    widget.onDone(restoredMessage(match.name, leftOut));
+  }
+
+  // archive button: ask first, then archive
+  // its recipe lines get archived with it, the store does both together (rule 12)
+  Future<void> _archive() async {
+    if (_saving) return;
+    final item = widget.item!;
+    setState(() {
+      _error = null;
+      _archivedMatch = null;
+    });
+
+    // showDialog waits until the owner taps a button, true = archive
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Archive ${item.name}?'),
+        content: const Text(
+          'It will be hidden from the list and from the tally. Past tallies '
+          'and reports keep it. You can restore it later with its recipe.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Archive'),
+          ),
+        ],
+      ),
+    );
+    // null = closed by tapping outside the dialog, same as cancel
+    if (yes != true || !mounted) return;
+
+    setState(() => _saving = true);
+    await widget.store.archive(item.id!);
+    widget.onDone('Archived ${item.name}.');
   }
 
   @override
@@ -187,7 +223,7 @@ class _MenuItemFormState extends State<MenuItemForm> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // title + close
+          // title, archive (only when editing), close
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 12, 8, 4),
             child: Row(
@@ -198,6 +234,11 @@ class _MenuItemFormState extends State<MenuItemForm> {
                     style: text.titleMedium,
                   ),
                 ),
+                if (!_isNew)
+                  TextButton(
+                    onPressed: _saving ? null : _archive,
+                    child: const Text('Archive'),
+                  ),
                 IconButton(
                   onPressed: widget.onCancel,
                   icon: const Icon(Icons.close),

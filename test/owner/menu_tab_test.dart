@@ -64,6 +64,14 @@ void main() {
     });
   }
 
+  // the screens read the db after a tap, so give it real time
+  Future<void> waitForDb(WidgetTester tester) async {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pumpAndSettle();
+  }
+
   // scrolls the panel to it and taps it, the recipe sits below the fields
   Future<void> tapVisible(WidgetTester tester, Finder target) async {
     await tester.ensureVisible(target);
@@ -279,14 +287,6 @@ void main() {
           await StockItemStore(db).add(item);
         }
       });
-    }
-
-    // the editor reads the db after the panel opens, so give it real time
-    Future<void> waitForDb(WidgetTester tester) async {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pumpAndSettle();
     }
 
     // opens the panel of the item, with its recipe loaded
@@ -543,6 +543,134 @@ void main() {
       expect(
         find.text('Add stock items first, in the Stock Items tab.'),
         findsOneWidget,
+      );
+    });
+  });
+
+  group('archive and restore', () {
+    const milk = StockItem(
+      name: 'Whole milk',
+      category: 'Dairy',
+      baseUnit: BaseUnit.ml,
+      countType: CountType.container,
+      containerSize: 1000,
+      lowMode: LowMode.containers,
+      lowValue: 1,
+    );
+
+    // a menu item with one recipe line, typed in oz
+    Future<int> addLatte(WidgetTester tester) async {
+      final latte = await addItem(
+        tester,
+        const MenuItem(name: 'Latte', category: 'Coffee', priceHint: 120),
+      );
+      await tester.runAsync(() async {
+        final stock = await StockItemStore(db).add(milk);
+        await RecipeStore(db).addLine(latte, stock, 177.441, inputUnit: 'oz');
+      });
+      return latte;
+    }
+
+    // goes to the archived list of the tab
+    Future<void> openArchivedView(WidgetTester tester) async {
+      await tester.tap(find.text('Archived'));
+      await waitForDb(tester);
+    }
+
+    // taps a button and waits for the db
+    Future<void> tapAndWait(WidgetTester tester, Finder button) async {
+      await tester.tap(button);
+      await waitForDb(tester);
+    }
+
+    testWidgets('adding has no archive button', (tester) async {
+      await openAdd(tester);
+      expect(find.text('Archive'), findsNothing);
+    });
+
+    testWidgets('archive asks first, then hides the row', (tester) async {
+      await addLatte(tester);
+      await openMenu(tester);
+      await tester.tap(find.text('Latte'));
+      await waitForDb(tester);
+
+      await tester.tap(find.text('Archive'));
+      await tester.pumpAndSettle();
+      expect(find.text('Archive Latte?'), findsOneWidget);
+
+      // cancel keeps it
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit menu item'), findsOneWidget);
+
+      await tester.tap(find.text('Archive'));
+      await tester.pumpAndSettle();
+      await tapAndWait(tester, find.widgetWithText(FilledButton, 'Archive'));
+
+      expect(find.text('Archived Latte.'), findsOneWidget);
+      expect(find.text('No menu items yet'), findsOneWidget);
+    });
+
+    testWidgets('archived view shows the item read only, restore brings it '
+        'back with its recipe', (tester) async {
+      final latte = await addLatte(tester);
+      await tester.runAsync(() => store.archive(latte));
+      await openMenu(tester);
+      await openArchivedView(tester);
+
+      expect(find.text('1 archived'), findsOneWidget);
+      // archived items have no active lines, so no recipe column
+      expect(find.text('Recipe'), findsNothing);
+      expect(find.text('No recipe yet'), findsNothing);
+      // only restored, never added
+      expect(find.text('Add item'), findsNothing);
+
+      await tester.tap(find.text('Latte'));
+      await tester.pumpAndSettle();
+      expect(find.text('Archived menu item'), findsOneWidget);
+      expect(
+        find.text('Restore it to edit it. Its recipe comes back too.'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('menu_name_field')), findsNothing);
+
+      await tapAndWait(tester, find.widgetWithText(FilledButton, 'Restore'));
+
+      expect(find.text('Restored Latte.'), findsOneWidget);
+      expect(find.text('No archived items'), findsOneWidget);
+
+      await tester.tap(find.text('Active'));
+      await waitForDb(tester);
+      expect(find.text('1 stock item'), findsOneWidget);
+      final line = (await tester.runAsync(
+        () => RecipeStore(db).lines(latte),
+      ))!.single;
+      expect(line.amountText, '6 oz (177.44 ml)');
+    });
+
+    testWidgets('restore says which recipe lines were left out', (
+      tester,
+    ) async {
+      final latte = await addLatte(tester);
+      await tester.runAsync(() async {
+        await store.archive(latte);
+        final stock = StockItemStore(db);
+        await stock.archive((await stock.findByName('Whole milk'))!.id!);
+      });
+      await openMenu(tester);
+      await openArchivedView(tester);
+
+      await tester.tap(find.text('Latte'));
+      await tester.pumpAndSettle();
+      await tapAndWait(tester, find.widgetWithText(FilledButton, 'Restore'));
+
+      expect(
+        find.text('Restored Latte. Left out archived stock items: Whole milk.'),
+        findsOneWidget,
+      );
+      expect(
+        await tester.runAsync(() => RecipeStore(db).lines(latte)),
+        isEmpty,
       );
     });
   });

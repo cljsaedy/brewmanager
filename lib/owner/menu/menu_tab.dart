@@ -8,11 +8,13 @@ import '../../logic/formatting.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/category_title.dart';
 import '../../widgets/status_chip.dart';
+import 'archived_menu_panel.dart';
 import 'menu_item_form.dart';
 
 // owner tab that lists every menu item in a table, grouped by category
 // every size is its own menu item, like "Iced Americano (Large)" (rule 6)
 // add item or tapping a row opens the form panel on the right
+// the active / archived switch shows archived items, tapping one opens a read only panel with restore
 class MenuTab extends StatefulWidget {
   const MenuTab({
     super.key,
@@ -42,6 +44,8 @@ class _MenuTabState extends State<MenuTab> {
   bool _panelOpen = false;
   // the item being edited, null = adding a new one
   MenuItem? _editing;
+  // false = active items, true = archived items
+  bool _showArchived = false;
 
   // width of the form panel, same as the stock items tab
   static const double _panelWidth = 340;
@@ -60,9 +64,10 @@ class _MenuTabState extends State<MenuTab> {
     _load();
   }
 
-  // reads the items, their recipe line counts and the categories from the db, then redraws
+  // reads the active (or archived) items, their recipe line counts and the categories from the db, then redraws
+  // categories always come from active items, they are only for the form chips
   Future<void> _load() async {
-    final items = await widget.store.list();
+    final items = await widget.store.list(archived: _showArchived);
     final lineCounts = await widget.store.lineCounts();
     final categories = await widget.store.categories();
     // mounted = the tab is still on screen (the owner could have locked while loading)
@@ -95,7 +100,19 @@ class _MenuTabState extends State<MenuTab> {
     });
   }
 
-  // after a save or restore: close the panel, show the message at the bottom, reload the list
+  // switching active / archived closes the panel and loads the other list
+  void _setShowArchived(bool archived) {
+    setState(() {
+      _showArchived = archived;
+      _panelOpen = false;
+      _editing = null;
+      // null = shows the loading circle until the other list is read
+      _items = null;
+    });
+    _load();
+  }
+
+  // after a save, archive or restore: close the panel, show the message at the bottom, reload the list
   void _onFormDone(String message) {
     _closePanel();
     _showMessage(message);
@@ -123,25 +140,38 @@ class _MenuTabState extends State<MenuTab> {
         Expanded(child: _tableCard(context)),
         if (_panelOpen) ...[
           const SizedBox(width: 12),
-          SizedBox(
-            width: _panelWidth,
-            child: MenuItemForm(
-              // a new key per item = the form starts fresh when another row is tapped
-              key: ValueKey(_editing?.id ?? 'new'),
-              store: widget.store,
-              recipes: widget.recipes,
-              stock: widget.stock,
-              item: _editing,
-              categories: _categories,
-              onDone: _onFormDone,
-              onSavedForRecipe: _onSavedForRecipe,
-              // recipes save right away, so only the table needs a redraw
-              onRecipeChanged: _load,
-              onCancel: _closePanel,
-            ),
-          ),
+          SizedBox(width: _panelWidth, child: _panel()),
         ],
       ],
+    );
+  }
+
+  // archived item = read only panel with restore, otherwise the add / edit form
+  Widget _panel() {
+    final editing = _editing;
+    if (editing != null && editing.isArchived) {
+      return ArchivedMenuPanel(
+        // a new key per item = the panel starts fresh when another row is tapped
+        key: ValueKey('archived-${editing.id}'),
+        store: widget.store,
+        item: editing,
+        onDone: _onFormDone,
+        onCancel: _closePanel,
+      );
+    }
+    return MenuItemForm(
+      // a new key per item = the form starts fresh when another row is tapped
+      key: ValueKey(editing?.id ?? 'new'),
+      store: widget.store,
+      recipes: widget.recipes,
+      stock: widget.stock,
+      item: editing,
+      categories: _categories,
+      onDone: _onFormDone,
+      onSavedForRecipe: _onSavedForRecipe,
+      // recipes save right away, so only the table needs a redraw
+      onRecipeChanged: _load,
+      onCancel: _closePanel,
     );
   }
 
@@ -168,10 +198,13 @@ class _MenuTabState extends State<MenuTab> {
     );
   }
 
-  // title, item count and the add button
+  // title, item count, the active / archived switch, and the add button
   Widget _header(BuildContext context, List<MenuItem>? items) {
     final text = Theme.of(context).textTheme;
     final count = items?.length ?? 0;
+    final countText = _showArchived
+        ? '$count archived'
+        : (count == 1 ? '1 menu item' : '$count menu items');
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 20, 12),
@@ -183,18 +216,30 @@ class _MenuTabState extends State<MenuTab> {
               children: [
                 Text('Menu & Recipes', style: text.headlineSmall),
                 const SizedBox(height: 2),
-                Text(
-                  count == 1 ? '1 menu item' : '$count menu items',
-                  style: text.bodySmall,
-                ),
+                Text(countText, style: text.bodySmall),
               ],
             ),
           ),
-          FilledButton.icon(
-            onPressed: _openAdd,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Add item'),
-          ),
+          // the switch is hidden while the panel is open, the table is too narrow for it then
+          if (!_compact)
+            SegmentedButton<bool>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(value: false, label: Text('Active')),
+                ButtonSegment(value: true, label: Text('Archived')),
+              ],
+              selected: {_showArchived},
+              onSelectionChanged: (picked) => _setShowArchived(picked.first),
+            ),
+          // archived items cant be added, only restored
+          if (!_showArchived) ...[
+            const SizedBox(width: 10),
+            FilledButton.icon(
+              onPressed: _openAdd,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add item'),
+            ),
+          ],
         ],
       ),
     );
@@ -226,10 +271,12 @@ class _MenuTabState extends State<MenuTab> {
               flex: _priceFlex,
               child: Text('Price', style: style),
             ),
-          const Expanded(
-            flex: _recipeFlex,
-            child: Text('Recipe', style: style),
-          ),
+          // archived items have no active lines, every row would wrongly say no recipe yet
+          if (!_showArchived)
+            const Expanded(
+              flex: _recipeFlex,
+              child: Text('Recipe', style: style),
+            ),
         ],
       ),
     );
@@ -249,11 +296,16 @@ class _MenuTabState extends State<MenuTab> {
             color: AppColors.textMuted,
           ),
           const SizedBox(height: 10),
-          Text('No menu items yet', style: text.titleMedium),
+          Text(
+            _showArchived ? 'No archived items' : 'No menu items yet',
+            style: text.titleMedium,
+          ),
           const SizedBox(height: 4),
           Text(
-            'Add what the cafe sells. Each size is its own item, '
-            'like "Iced Americano (Large)".',
+            _showArchived
+                ? 'Items you archive show up here, so you can restore them.'
+                : 'Add what the cafe sells. Each size is its own item, '
+                      'like "Iced Americano (Large)".',
             style: text.bodySmall,
           ),
         ],
@@ -306,7 +358,11 @@ class _MenuTabState extends State<MenuTab> {
                 child: Text(
                   item.name,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  // archived names are a bit greyed so the view looks different
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: item.isArchived ? AppColors.textMuted : null,
+                  ),
                 ),
               ),
               if (!_compact)
@@ -315,14 +371,15 @@ class _MenuTabState extends State<MenuTab> {
                   // no currency sign, the price is only a hint for the tally
                   child: Text(price == null ? '—' : formatAmount(price)),
                 ),
-              Expanded(
-                flex: _recipeFlex,
-                // Align = the chip keeps its own width instead of stretching
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: _recipeStatus(item),
+              if (!_showArchived)
+                Expanded(
+                  flex: _recipeFlex,
+                  // Align = the chip keeps its own width instead of stretching
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: _recipeStatus(item),
+                  ),
                 ),
-              ),
             ],
           ),
         ),
