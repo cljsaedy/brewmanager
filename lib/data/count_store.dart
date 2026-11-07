@@ -1,8 +1,8 @@
 import 'dart:math';
 
-import 'package:intl/intl.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../logic/business_day.dart';
 import '../logic/clock.dart';
 import '../logic/count_math.dart';
 import '../logic/units.dart';
@@ -16,8 +16,6 @@ class CountStore {
 
   final Database _db;
   final Clock _clock;
-
-  static final DateFormat _dateFormat = DateFormat('yyyy-MM-dd');
 
   // the tally of the same days, it uses this same db
   TallyStore get tally => TallyStore(_db);
@@ -314,11 +312,9 @@ class CountStore {
       orderBy: 'business_date DESC',
       limit: 1,
     );
-    if (rows.isEmpty) return _dateFormat.format(_clock().toLocal());
+    if (rows.isEmpty) return dateText(_clock().toLocal());
 
-    final last = _dateFormat.parse(rows.first['business_date'] as String);
-    // day + 1 in the constructor handles the end of a month, Oct 31 -> Nov 1
-    return _dateFormat.format(DateTime(last.year, last.month, last.day + 1));
+    return addDays(rows.first['business_date'] as String, 1);
   }
 
   // makes sure the draft matches the stock items as they are right now

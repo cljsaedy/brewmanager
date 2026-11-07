@@ -1,0 +1,256 @@
+import 'package:sqflite/sqflite.dart';
+
+import '../logic/business_day.dart';
+import '../logic/clock.dart';
+import '../logic/count_math.dart';
+import '../logic/units.dart';
+import '../logic/usage_math.dart';
+import 'count_line.dart';
+import 'stock_item.dart';
+
+// locks a day and saves its numbers (rule 4 and rule 5)
+class SubmitStore {
+  SubmitStore(this._db, {Clock clock = utcNow}) : _clock = clock;
+
+  final Database _db;
+  final Clock _clock;
+
+  // submits a draft day, gives back false if it was not a draft anymore
+  // date = the date the barista confirmed, it can only be the draft's date or later
+  // skippedDaysOpen = the answer to "was the cafe open on those days?", only used when the date moved
+  //
+  // everything is in 1 transaction so a day is never half submitted, one error undoes all of it
+  // a double tap cant submit twice: sqlite runs transactions one at a time,
+  // so the 2nd one reads the status after the 1st finished and stops there
+  // the next draft is not made here, it gets made on the next loadDraft like any new draft
+  Future<bool> submit(
+    int dayId, {
+    required String date,
+    bool skippedDaysOpen = true,
+  }) {
+    return _db.transaction((txn) async {
+      final rows = await txn.query(
+        'business_days',
+        where: 'id = ?',
+        whereArgs: [dayId],
+      );
+      final day = BusinessDay.fromRow(rows.first);
+      if (day.status != 'draft') return false;
+
+      final draftDate = day.businessDate;
+      if (!canSubmitOn(draftDate: draftDate, chosenDate: date)) {
+        throw ArgumentError('A business day cant go back: $date');
+      }
+      final skipped = skippedDates(draftDate: draftDate, chosenDate: date);
+      final submittedAt = _clock().toIso8601String();
+
+      // the date moves first so a closed day can take the draft's old date below
+      await txn.update(
+        'business_days',
+        {
+          'business_date': date,
+          'status': 'submitted',
+          'submitted_at': submittedAt,
+          // open on the skipped days = this count covers all of them, like "covers Oct 29-30"
+          'covers_from': skipped.isNotEmpty && skippedDaysOpen
+              ? draftDate
+              : null,
+        },
+        where: 'id = ?',
+        whereArgs: [dayId],
+      );
+      if (!skippedDaysOpen) {
+        for (final closedDate in skipped) {
+          await txn.insert('business_days', {
+            'business_date': closedDate,
+            'status': 'closed',
+          });
+        }
+      }
+
+      await _saveResults(txn, dayId, date, submittedAt);
+
+      // the opening count is done, so these items carry over normally from now on (rule 3)
+      await txn.rawUpdate(
+        '''
+        UPDATE stock_items SET needs_opening_count = 0
+        WHERE id IN (
+          SELECT stock_item_id FROM count_lines
+          WHERE day_id = ? AND is_opening = 1
+        )
+        ''',
+        [dayId],
+      );
+      return true;
+    });
+  }
+
+  // works out and saves the numbers of a day, the old ones get replaced
+  // on its own since a correction has to do this again in feature 8
+  // only items still active get results, an item archived during the day was hidden from the barista
+  Future<void> _saveResults(
+    Transaction txn,
+    int dayId,
+    String date,
+    String submittedAt,
+  ) async {
+    await txn.delete('day_results', where: 'day_id = ?', whereArgs: [dayId]);
+    await txn.delete(
+      'container_checks',
+      where: 'day_id = ?',
+      whereArgs: [dayId],
+    );
+
+    final lineRows = await txn.query(
+      'count_lines',
+      where: 'day_id = ?',
+      whereArgs: [dayId],
+    );
+    final items = await _activeItems(txn);
+    final inRecipe = await _recipeItemIds(txn, submittedAt);
+    final uses = await _recipeUses(txn, dayId, submittedAt);
+
+    for (final row in lineRows) {
+      final line = CountLine.fromRow(row);
+      final item = items[line.stockItemId];
+      if (item == null) continue;
+
+      final usage = dayUsage(
+        start: line.startQty,
+        startIsExact: line.startIsExact,
+        inQty: line.inQty,
+        end: line.endQty,
+        endIsExact: line.endIsExact,
+        isOpening: line.isOpening,
+        inRecipe: inRecipe.contains(item.id),
+        uses: uses[item.id] ?? const [],
+        lowMode: item.lowMode,
+        lowValue: item.lowValue,
+        containerSize: item.containerSize,
+      );
+      await txn.insert('day_results', {
+        'day_id': dayId,
+        'stock_item_id': item.id,
+        'expected_qty': usage.expected,
+        'actual_qty': usage.actual,
+        'actual_is_exact': usage.actualIsExact ? 1 : 0,
+        'gap': usage.gap,
+        'restock_flag': usage.restockFlag ? 1 : 0,
+      });
+
+      if (item.countType != CountType.container) continue;
+      final check = containerCheck(
+        today: date,
+        containersFinished: line.outCount,
+        isOpening: line.isOpening,
+        containerSize: item.containerSize!,
+        expectedToday: usage.expected,
+        earlierDays: await _earlierDays(txn, item, date),
+      );
+      if (check == null) continue;
+      await txn.insert('container_checks', {
+        'day_id': dayId,
+        'stock_item_id': item.id,
+        'containers': check.containers,
+        'container_total': check.containerTotal,
+        'expected_since_last': check.expectedSinceLast,
+        'since_date': check.sinceDate,
+      });
+    }
+  }
+
+  // the active stock items by id
+  Future<Map<int, StockItem>> _activeItems(Transaction txn) async {
+    final rows = await txn.query('stock_items', where: 'is_archived = 0');
+    final items = [for (final row in rows) StockItem.fromRow(row)];
+    return {for (final item in items) item.id!: item};
+  }
+
+  // the stock items in at least 1 recipe when the day was submitted
+  // an item that is in one has expected 0 on a day nothing using it was tallied, others have no expected
+  Future<Set<int>> _recipeItemIds(Transaction txn, String submittedAt) async {
+    final rows = await txn.rawQuery(
+      '''
+      SELECT DISTINCT stock_item_id FROM recipe_lines
+      WHERE created_at <= ? AND (archived_at IS NULL OR archived_at > ?)
+      ''',
+      [submittedAt, submittedAt],
+    );
+    return {for (final row in rows) row['stock_item_id'] as int};
+  }
+
+  // how the day's tally used each stock item, by stock item id
+  // these are the recipe lines active when the day was submitted, not the ones active now (rule 12)
+  // so redoing an old day after a recipe edit still gives that day's numbers
+  Future<Map<int, List<RecipeUse>>> _recipeUses(
+    Transaction txn,
+    int dayId,
+    String submittedAt,
+  ) async {
+    final rows = await txn.rawQuery(
+      '''
+      SELECT recipe_lines.stock_item_id, recipe_lines.amount, tally_lines.qty
+      FROM tally_lines
+      JOIN recipe_lines
+        ON recipe_lines.menu_item_id = tally_lines.menu_item_id
+      WHERE tally_lines.day_id = ?
+        AND tally_lines.qty > 0
+        AND recipe_lines.created_at <= ?
+        AND (recipe_lines.archived_at IS NULL
+             OR recipe_lines.archived_at > ?)
+      ''',
+      [dayId, submittedAt, submittedAt],
+    );
+
+    final uses = <int, List<RecipeUse>>{};
+    for (final row in rows) {
+      final use = RecipeUse(
+        menuQty: row['qty'] as int,
+        amount: (row['amount'] as num).toDouble(),
+      );
+      uses.putIfAbsent(row['stock_item_id'] as int, () => []).add(use);
+    }
+    return uses;
+  }
+
+  // the submitted days of an item before this date, what a container check looks back at
+  // LEFT JOIN = a day with no results row still comes back, its expected is just null
+  // the current container size is used for the opened amount, the past size is not saved
+  Future<List<PastDay>> _earlierDays(
+    Transaction txn,
+    StockItem item,
+    String date,
+  ) async {
+    final rows = await txn.rawQuery(
+      '''
+      SELECT business_days.business_date, day_results.expected_qty,
+             count_lines.out_count, count_lines.is_opening,
+             count_lines.level, count_lines.exact_qty
+      FROM count_lines
+      JOIN business_days ON business_days.id = count_lines.day_id
+      LEFT JOIN day_results
+        ON day_results.day_id = count_lines.day_id
+        AND day_results.stock_item_id = count_lines.stock_item_id
+      WHERE count_lines.stock_item_id = ?
+        AND business_days.status = 'submitted'
+        AND business_days.business_date < ?
+      ''',
+      [item.id, date],
+    );
+
+    return [
+      for (final row in rows)
+        PastDay(
+          date: row['business_date'] as String,
+          expected: (row['expected_qty'] as num?)?.toDouble(),
+          containersFinished: row['out_count'] as int,
+          isOpening: row['is_opening'] == 1,
+          openedAmount: openedAmount(
+            containerSize: item.containerSize!,
+            level: (row['level'] as num?)?.toDouble() ?? levelNone,
+            exactQty: (row['exact_qty'] as num?)?.toDouble(),
+          ),
+        ),
+    ];
+  }
+}
