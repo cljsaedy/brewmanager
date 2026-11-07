@@ -60,6 +60,33 @@ double levelAfterFinish(int sealedBefore) {
   return sealedBefore > 0 ? levelFull : levelNone;
 }
 
+// true when there is something to finish, a sealed one or an open one
+// no sealed, opened none and no typed amount = nothing is there (rule 3)
+bool canFinishContainer({
+  required int sealed,
+  required double level,
+  required double? exactQty,
+}) {
+  return sealed > 0 || level != levelNone || exactQty != null;
+}
+
+// sealed after undoing a finished tap, give it the sealed from now and from before that tap
+// it only goes up if that tap really took one out, with 0 sealed the tap took nothing
+// this adds to the sealed from now so restocks and edits after the tap stay in
+int sealedAfterUndo({required int sealed, required int sealedBefore}) {
+  return sealedBefore > 0 ? sealed + 1 : sealed;
+}
+
+// true when opened is still what the finished tap set, so undo can put the old one back
+// anything else means the barista changed it after the tap, then undo leaves it alone
+bool openedStillFromFinish({
+  required double level,
+  required double? exactQty,
+  required int sealedBefore,
+}) {
+  return exactQty == null && level == levelAfterFinish(sealedBefore);
+}
+
 // how much of an item was used in one day, in base units (rule 7)
 // used = start + in - end, like fries 8 at the start, none in, 6 at the end = 2 used
 // it can go below 0 when the barista counts more than the logbook says was there

@@ -457,6 +457,7 @@ void main() {
 
     testWidgets('undo is off until something is finished', (tester) async {
       await openPanel(tester, syrup);
+      await tapVisible(tester, plus);
       bool undoIsOn() => tester.widget<IconButton>(undo).onPressed != null;
 
       expect(undoIsOn(), isFalse);
@@ -464,8 +465,84 @@ void main() {
       expect(undoIsOn(), isTrue);
     });
 
+    testWidgets('undo keeps a level changed after the tap', (tester) async {
+      await openPanel(tester, syrup);
+      await tapVisible(tester, plus);
+      await tapVisible(tester, finish);
+      await tapVisible(tester, find.text('25%'));
+
+      await tapVisible(tester, undo);
+
+      expect(sealedShown(tester), '1');
+      final line = await savedLine(tester);
+      expect(line['level'], level25);
+      expect(line['out_count'], 0);
+    });
+
+    testWidgets('undo keeps a restock made after the tap', (tester) async {
+      await openPanel(tester, syrup);
+      await tapVisible(tester, plus);
+      await tapVisible(tester, finish);
+      await tester.enterText(find.byKey(const Key('in_field')), '1');
+      await tester.pumpAndSettle();
+      await tapVisible(tester, find.byKey(const Key('in_add')));
+
+      await tapVisible(tester, undo);
+
+      expect(sealedShown(tester), '2');
+      expect((await savedLine(tester))['in_qty'], 2000);
+    });
+
+    testWidgets('nothing open turns the button off and shows the hint', (
+      tester,
+    ) async {
+      await openPanel(tester, syrup);
+      bool finishIsOn() {
+        return tester.widget<OutlinedButton>(finish).onPressed != null;
+      }
+
+      expect(finishIsOn(), isFalse);
+      expect(find.text('Nothing open to finish.'), findsOneWidget);
+
+      await tapVisible(tester, find.text('50%'));
+
+      expect(finishIsOn(), isTrue);
+      expect(find.text('Nothing open to finish.'), findsNothing);
+    });
+
+    testWidgets('the last container turns the button off after it', (
+      tester,
+    ) async {
+      await openPanel(tester, syrup);
+      await tapVisible(tester, find.text('50%'));
+
+      await tapVisible(tester, finish);
+
+      expect(find.text('Nothing open to finish.'), findsOneWidget);
+    });
+
+    testWidgets('the button says the container name', (tester) async {
+      await openPanel(tester, syrup);
+      expect(find.text('Bottle finished'), findsOneWidget);
+    });
+
+    testWidgets('no container name says Container finished', (tester) async {
+      const noName = StockItem(
+        name: 'Beans',
+        category: 'Coffee',
+        baseUnit: BaseUnit.g,
+        countType: CountType.container,
+        containerSize: 250,
+        lowMode: LowMode.containers,
+        lowValue: 1,
+      );
+      await openPanel(tester, noName);
+      expect(find.text('Container finished'), findsOneWidget);
+    });
+
     testWidgets('two fast taps both count', (tester) async {
       await openPanel(tester, syrup);
+      await tapVisible(tester, plus);
       await tester.ensureVisible(finish);
       await tester.pumpAndSettle();
 
@@ -499,6 +576,7 @@ void main() {
       'the finished count is still there when the panel opens again',
       (tester) async {
         await openPanel(tester, syrup);
+        await tapVisible(tester, plus);
         await tapVisible(tester, finish);
 
         await tester.tap(find.byTooltip('Close'));

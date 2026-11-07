@@ -29,6 +29,12 @@ String pluralOf(String word) {
   return '${word}s';
 }
 
+// first letter big, like "bottle" -> "Bottle"
+String capitalized(String word) {
+  if (word.isEmpty) return word;
+  return '${word[0].toUpperCase()}${word.substring(1)}';
+}
+
 // a time on the tablet's clock, small letters, like "2:15pm"
 final DateFormat _timeFormat = DateFormat('h:mma');
 

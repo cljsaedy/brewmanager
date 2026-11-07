@@ -47,7 +47,7 @@ class _CountPanelState extends State<CountPanel> {
   // containers finished today, kept here too so undo turns on right after a tap
   late int _finished;
 
-  // true while an undo is saving, its old values only come back from the db
+  // true while an undo is saving, its new values only come back from the db
   // so count taps wait until then, otherwise they would build on the wrong numbers
   bool _undoing = false;
 
@@ -61,6 +61,10 @@ class _CountPanelState extends State<CountPanel> {
   final Set<int> _removing = {};
 
   bool get _isContainer => widget.row.item.countType == CountType.container;
+
+  // no sealed and nothing open = nothing to finish
+  bool get _canFinish =>
+      canFinishContainer(sealed: _sealed, level: _level, exactQty: _exactQty);
 
   // the whole number typed in the restock box, null if it is empty or 0
   int? get _inAmount {
@@ -213,7 +217,7 @@ class _CountPanelState extends State<CountPanel> {
   // one tap on container finished (rule 3), the store does the same math and saves it
   // the numbers change here right away too, so a fast next tap builds on them
   Future<void> _finishContainer() async {
-    if (_undoing) return;
+    if (_undoing || !_canFinish) return;
 
     final sealedBefore = _sealed;
     setState(() {
@@ -228,7 +232,7 @@ class _CountPanelState extends State<CountPanel> {
     widget.onChanged();
   }
 
-  // undoes the last finished container, the old values were saved on its event
+  // undoes the last finished container, the store works out what that tap changed
   Future<void> _undoFinish() async {
     if (_undoing || _finished == 0) return;
 
@@ -493,6 +497,8 @@ class _CountPanelState extends State<CountPanel> {
   }
 
   // container items only, number items work out their Out from the count (rule 3)
+  // the button says the container's name, like "Bottle finished"
+  // containerName already says "container" when no name was typed
   Widget _outPart(BuildContext context) {
     final text = Theme.of(context).textTheme;
 
@@ -503,9 +509,13 @@ class _CountPanelState extends State<CountPanel> {
         const SizedBox(height: 8),
         OutlinedButton(
           key: const Key('out_finish'),
-          onPressed: _finishContainer,
-          child: const Text('Container finished'),
+          onPressed: _canFinish ? _finishContainer : null,
+          child: Text('${capitalized(widget.row.item.containerName)} finished'),
         ),
+        if (!_canFinish) ...[
+          const SizedBox(height: 4),
+          Text('Nothing open to finish.', style: text.bodySmall),
+        ],
         const SizedBox(height: 8),
         Row(
           children: [

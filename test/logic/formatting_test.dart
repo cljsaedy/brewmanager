@@ -3,6 +3,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:brewmanager/logic/formatting.dart';
 
 void main() {
+  test('capitalized makes the first letter big', () {
+    expect(capitalized('bottle'), 'Bottle');
+    expect(capitalized('Pack'), 'Pack');
+    expect(capitalized(''), '');
+  });
+
   test('formatTime uses small letters', () {
     expect(formatTime(DateTime(2026, 11, 1, 14, 15)), '2:15pm');
     expect(formatTime(DateTime(2026, 11, 1, 9, 5)), '9:05am');

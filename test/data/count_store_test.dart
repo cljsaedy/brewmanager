@@ -685,9 +685,23 @@ void main() {
 
     test('it does not change touched', () async {
       await stock.add(syrup());
+      // a restock leaves the line untouched and gives it something to finish
+      await store.addRestock((await store.loadDraft()).rows.single, 2000);
+
       await store.finishContainer((await store.loadDraft()).rows.single);
 
-      expect((await currentLine()).touched, isFalse);
+      final line = await currentLine();
+      expect(line.outCount, 1);
+      expect(line.touched, isFalse);
+    });
+
+    test('with nothing open it saves nothing', () async {
+      final row = await rowWith(sealed: 0, level: levelNone);
+
+      await store.finishContainer(row);
+
+      expect((await currentLine()).outCount, 0);
+      expect(await db.query('stock_events'), isEmpty);
     });
 
     test('undo with sealed left puts everything back', () async {
@@ -750,8 +764,7 @@ void main() {
       expect(saved.outCount, 0);
     });
 
-    test('undo goes back to the exact values, a restock after the tap is '
-        'still in In but not in sealed', () async {
+    test('undo keeps a restock made after the tap', () async {
       final row = await rowWith(sealed: 1, level: level50);
       await store.finishContainer(row);
       await store.addRestock(row, 2000);
@@ -759,8 +772,78 @@ void main() {
       await store.undoFinish(row);
 
       final line = await currentLine();
-      expect(line.sealed, 1);
+      expect(line.outCount, 0);
+      // 1 from before + 1 restock
+      expect(line.sealed, 2);
+      expect(line.level, level50);
       expect(line.inQty, 2000);
+      expect(line.endQty, 5000);
+    });
+
+    test('undo keeps a sealed count edited after the tap', () async {
+      final row = await rowWith(sealed: 2, level: level50);
+      await store.finishContainer(row);
+      await store.saveContainerCount(
+        row,
+        sealed: 5,
+        level: levelFull,
+        exactQty: null,
+      );
+
+      await store.undoFinish(row);
+
+      final line = await currentLine();
+      expect(line.sealed, 6);
+      expect(line.level, level50);
+    });
+
+    test('undo keeps a level changed after the tap', () async {
+      final row = await rowWith(sealed: 1, level: level50);
+      await store.finishContainer(row);
+      await store.saveContainerCount(
+        row,
+        sealed: 0,
+        level: level25,
+        exactQty: null,
+      );
+
+      await store.undoFinish(row);
+
+      final line = await currentLine();
+      expect(line.outCount, 0);
+      expect(line.sealed, 1);
+      expect(line.level, level25);
+    });
+
+    test('undo keeps an exact amount typed after the tap', () async {
+      final row = await rowWith(sealed: 1, level: level50);
+      await store.finishContainer(row);
+      await store.saveContainerCount(
+        row,
+        sealed: 0,
+        level: levelFull,
+        exactQty: 300,
+      );
+
+      await store.undoFinish(row);
+
+      final line = await currentLine();
+      expect(line.sealed, 1);
+      expect(line.exactQty, 300);
+      expect(line.endQty, 2300);
+    });
+
+    test('undo of a tap with no sealed adds no sealed', () async {
+      final row = await rowWith(sealed: 0, level: level50);
+      await store.finishContainer(row);
+      await store.addRestock(row, 2000);
+
+      await store.undoFinish(row);
+
+      final line = await currentLine();
+      // only the restock, that tap took nothing out of sealed
+      expect(line.sealed, 1);
+      expect(line.level, level50);
     });
   });
 

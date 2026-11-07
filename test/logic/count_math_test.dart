@@ -79,6 +79,75 @@ void main() {
     });
   });
 
+  group('can finish', () {
+    test('nothing sealed, nothing open and no typed amount = no', () {
+      expect(
+        canFinishContainer(sealed: 0, level: levelNone, exactQty: null),
+        isFalse,
+      );
+    });
+
+    test('a sealed one, an open level or a typed amount = yes', () {
+      expect(
+        canFinishContainer(sealed: 1, level: levelNone, exactQty: null),
+        isTrue,
+      );
+      expect(
+        canFinishContainer(sealed: 0, level: level25, exactQty: null),
+        isTrue,
+      );
+      expect(
+        canFinishContainer(sealed: 0, level: levelNone, exactQty: 350),
+        isTrue,
+      );
+    });
+  });
+
+  group('undo of a finished tap', () {
+    test('sealed only goes up if the tap took one out', () {
+      expect(sealedAfterUndo(sealed: 1, sealedBefore: 2), 2);
+      expect(sealedAfterUndo(sealed: 1, sealedBefore: 0), 1);
+    });
+
+    test('sealed builds on the number from now, not from before', () {
+      // tap took 1 of 1, then 3 arrived
+      expect(sealedAfterUndo(sealed: 3, sealedBefore: 1), 4);
+    });
+
+    test('opened still full after a tap that opened one', () {
+      expect(
+        openedStillFromFinish(
+          level: levelFull,
+          exactQty: null,
+          sealedBefore: 1,
+        ),
+        isTrue,
+      );
+    });
+
+    test('opened still none after a tap with no sealed', () {
+      expect(
+        openedStillFromFinish(
+          level: levelNone,
+          exactQty: null,
+          sealedBefore: 0,
+        ),
+        isTrue,
+      );
+    });
+
+    test('a changed level or a typed amount means it was edited', () {
+      expect(
+        openedStillFromFinish(level: level50, exactQty: null, sealedBefore: 1),
+        isFalse,
+      );
+      expect(
+        openedStillFromFinish(level: levelFull, exactQty: 300, sealedBefore: 1),
+        isFalse,
+      );
+    });
+  });
+
   group('amountUsed', () {
     test('start plus in minus end', () {
       expect(amountUsed(start: 8, inQty: 0, end: 6), 2);

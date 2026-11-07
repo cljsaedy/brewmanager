@@ -196,13 +196,21 @@ class CountStore {
   }
 
   // one tap on container finished (rule 3)
-  // the values from before the tap go on the event so undo can put them back exactly
+  // the values from before the tap go on the event so undo knows what this tap changed
   // the line stays untouched, the app filled in the new level, the barista did not count it
+  // nothing happens if there is nothing to finish, the db is read again here so a fast second tap is caught too
   // transaction = the event and the line get saved together or not at all
   Future<void> finishContainer(CountRow row) {
     return _db.transaction((txn) async {
       final line = await _readLine(txn, row.line.id);
       final sealed = line.sealed!;
+      final canFinish = canFinishContainer(
+        sealed: sealed,
+        level: line.level ?? levelNone,
+        exactQty: line.exactQty,
+      );
+      if (!canFinish) return;
+
       await txn.insert('stock_events', {
         'day_id': row.line.dayId,
         'stock_item_id': row.item.id,
@@ -224,9 +232,11 @@ class CountStore {
     });
   }
 
-  // removes the last finished event and puts sealed, level and exact back to what they were (rule 3)
-  // that also drops anything changed on the line after that tap, the rule wants them back exactly
-  // gives back the saved line so the panel can show the old values
+  // removes the last finished event and reverses only what that tap did (rule 3)
+  // it is not a snapshot, restocks and edits made after the tap are never lost:
+  // sealed goes up by 1 only if the tap took one out
+  // opened goes back only if it is still what the tap set, otherwise it stays
+  // gives back the saved line so the panel can show the new values
   Future<CountLine> undoFinish(CountRow row) {
     return _db.transaction((txn) async {
       final events = await txn.query(
@@ -236,7 +246,8 @@ class CountStore {
         orderBy: 'id DESC',
         limit: 1,
       );
-      if (events.isEmpty) return _readLine(txn, row.line.id);
+      final line = await _readLine(txn, row.line.id);
+      if (events.isEmpty) return line;
 
       final last = events.first;
       await txn.delete(
@@ -244,11 +255,24 @@ class CountStore {
         where: 'id = ?',
         whereArgs: [last['id']],
       );
+
+      final sealedBefore = last['prev_sealed'] as int;
+      final level = line.level ?? levelNone;
+      final putOpenedBack = openedStillFromFinish(
+        level: level,
+        exactQty: line.exactQty,
+        sealedBefore: sealedBefore,
+      );
       final count = _containerValues(
         row.item,
-        sealed: last['prev_sealed'] as int,
-        level: (last['prev_level'] as num).toDouble(),
-        exactQty: (last['prev_exact'] as num?)?.toDouble(),
+        sealed: sealedAfterUndo(
+          sealed: line.sealed!,
+          sealedBefore: sealedBefore,
+        ),
+        level: putOpenedBack ? (last['prev_level'] as num).toDouble() : level,
+        exactQty: putOpenedBack
+            ? (last['prev_exact'] as num?)?.toDouble()
+            : line.exactQty,
       );
       await _saveFinishChange(txn, row, count);
       return _readLine(txn, row.line.id);
