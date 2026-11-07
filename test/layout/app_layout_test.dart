@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:brewmanager/count/count_badges.dart';
 import 'package:brewmanager/count/count_tab.dart';
 import 'package:brewmanager/data/count_store.dart';
 import 'package:brewmanager/data/stock_item.dart';

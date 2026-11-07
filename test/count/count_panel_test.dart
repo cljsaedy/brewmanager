@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:brewmanager/count/count_panel.dart';
-import 'package:brewmanager/count/count_tab.dart';
+import 'package:brewmanager/count/count_badges.dart';
 import 'package:brewmanager/data/count_store.dart';
 import 'package:brewmanager/data/stock_item.dart';
 import 'package:brewmanager/data/stock_item_store.dart';
@@ -408,6 +408,47 @@ void main() {
       expect(finish, findsNothing);
     });
 
+    testWidgets('the message says what the tap changed', (tester) async {
+      await openPanel(tester, syrup);
+      await tapVisible(tester, plus);
+      await tapVisible(tester, plus);
+      await tapVisible(tester, find.text('50%'));
+
+      await tapVisible(tester, finish);
+      expect(
+        find.text('Bottle finished. Sealed 2 → 1, Opened: Full.'),
+        findsOneWidget,
+      );
+
+      await tapVisible(tester, undo);
+      expect(find.text('Undone. Sealed 1 → 2, Opened: 50%.'), findsOneWidget);
+      // the new message replaces the old one
+      expect(find.textContaining('Bottle finished.'), findsNothing);
+    });
+
+    testWidgets('the message leaves out sealed if it didnt change', (
+      tester,
+    ) async {
+      await openPanel(tester, syrup);
+      await tapVisible(tester, find.text('50%'));
+
+      await tapVisible(tester, finish);
+
+      expect(find.text('Bottle finished. Opened: None.'), findsOneWidget);
+    });
+
+    testWidgets('the message goes away by itself', (tester) async {
+      await openPanel(tester, syrup);
+      await tapVisible(tester, find.text('50%'));
+      await tapVisible(tester, finish);
+      expect(find.byType(SnackBar), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
     testWidgets('with sealed left it opens the next one', (tester) async {
       await openPanel(tester, syrup);
       await tapVisible(tester, plus);
@@ -593,8 +634,70 @@ void main() {
     );
   });
 
+  group('lines between the parts', () {
+    final inPanelBody = find.descendant(
+      of: find.descendant(
+        of: find.byType(CountPanel),
+        matching: find.byType(SingleChildScrollView),
+      ),
+      matching: find.byType(Divider),
+    );
+
+    testWidgets('a container item has 5 lines', (tester) async {
+      await openPanel(tester, syrup);
+      expect(inPanelBody, findsNWidgets(5));
+    });
+
+    testWidgets('a number item has 3 lines', (tester) async {
+      await openPanel(tester, friesPack);
+      expect(inPanelBody, findsNWidgets(3));
+    });
+  });
+
   group('the restock badge follows the panel', () {
     final badge = find.widgetWithText(StatusChip, restockBadge);
+
+    testWidgets('the badge moves to the panel, then back to the row', (
+      tester,
+    ) async {
+      final inPanel = find.descendant(
+        of: find.byType(CountPanel),
+        matching: badge,
+      );
+
+      await openPanel(tester, syrup);
+      expect(badge, findsOneWidget);
+      expect(inPanel, findsOneWidget);
+
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+
+      expect(badge, findsOneWidget);
+      expect(inPanel, findsNothing);
+    });
+
+    testWidgets('other rows show no badges while the panel is open', (
+      tester,
+    ) async {
+      await tester.runAsync(() => StockItemStore(db).add(syrup));
+      await openPanel(tester, friesPack);
+
+      // the syrup is on its opening count too but only the open item shows it
+      expect(badge, findsOneWidget);
+      expect(find.text(openingCountBadge), findsOneWidget);
+    });
+
+    testWidgets('the keyboard hides the panel badges', (tester) async {
+      await openPanel(tester, syrup);
+
+      tester.view.viewInsets = const FakeViewPadding(bottom: 400);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpAndSettle();
+
+      expect(badge, findsNothing);
+      expect(find.byType(CountPanel), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
 
     testWidgets('a higher count takes it away', (tester) async {
       await openPanel(tester, syrup);

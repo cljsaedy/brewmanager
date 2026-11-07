@@ -7,14 +7,8 @@ import '../logic/formatting.dart';
 import '../logic/units.dart';
 import '../theme/app_theme.dart';
 import '../widgets/category_title.dart';
-import '../widgets/status_chip.dart';
+import 'count_badges.dart';
 import 'count_panel.dart';
-
-// badge on the row of an item on its opening count day (rule 3)
-const String openingCountBadge = 'Opening count: please count';
-
-// badge on the row of an item at or below its low-stock level, only a mark (rule 8)
-const String restockBadge = 'Restock recommended';
 
 // which rows the table shows, the used today filter comes in feature 5 since it needs the tally
 enum _CountFilter { all, restock }
@@ -401,9 +395,9 @@ class _CountTabState extends State<CountTab> {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
-                    if (line.isOpening || row.restockRecommended) ...[
+                    if (!_compact && row.hasBadges) ...[
                       const SizedBox(height: 6),
-                      _badges(row),
+                      CountBadges(row),
                     ],
                   ],
                 ),
@@ -425,21 +419,6 @@ class _CountTabState extends State<CountTab> {
           ),
         ),
       ),
-    );
-  }
-
-  // the badges under the item name
-  // Wrap = they go under each other when the column is narrow
-  Widget _badges(CountRow row) {
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: [
-        if (row.line.isOpening)
-          const StatusChip(label: openingCountBadge, tone: ChipTone.warn),
-        if (row.restockRecommended)
-          const StatusChip(label: restockBadge, tone: ChipTone.warn),
-      ],
     );
   }
 

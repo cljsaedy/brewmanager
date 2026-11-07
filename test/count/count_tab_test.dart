@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:brewmanager/count/count_badges.dart';
 import 'package:brewmanager/count/count_tab.dart';
 import 'package:brewmanager/data/count_line.dart';
 import 'package:brewmanager/data/stock_item.dart';

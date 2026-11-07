@@ -7,6 +7,7 @@ import '../logic/count_math.dart';
 import '../logic/formatting.dart';
 import '../logic/units.dart';
 import '../theme/app_theme.dart';
+import 'count_badges.dart';
 
 // the opened level buttons in the order they show on screen
 const Map<String, double> _levelButtons = {
@@ -39,6 +40,12 @@ class CountPanel extends StatefulWidget {
 }
 
 class _CountPanelState extends State<CountPanel> {
+  // below this height the keyboard is open, then the badges hide so the panel still fits
+  static const double _minHeightForBadges = 240;
+
+  // how long the short message stays after a finish or undo
+  static const Duration _messageTime = Duration(seconds: 3);
+
   // kept here and not read back from the row, a fast second tap has to build on the first one
   // even if the db has not finished saving it yet
   late int _sealed;
@@ -227,6 +234,10 @@ class _CountPanelState extends State<CountPanel> {
       _exactQty = null;
     });
     _exactBox.clear();
+    _showChange(
+      '${capitalized(widget.row.item.containerName)} finished',
+      sealedBefore,
+    );
 
     await widget.store.finishContainer(widget.row);
     widget.onChanged();
@@ -236,6 +247,7 @@ class _CountPanelState extends State<CountPanel> {
   Future<void> _undoFinish() async {
     if (_undoing || _finished == 0) return;
 
+    final sealedBefore = _sealed;
     _undoing = true;
     setState(() => _finished--);
     final saved = await widget.store.undoFinish(widget.row);
@@ -250,8 +262,39 @@ class _CountPanelState extends State<CountPanel> {
       });
       final exact = saved.exactQty;
       _exactBox.text = exact == null ? '' : plainNumber(exact);
+      _showChange('Undone', sealedBefore);
     }
     widget.onChanged();
+  }
+
+  // what opened is now in words, like "50%" or "350 ml"
+  String _openedText() {
+    final exact = _exactQty;
+    if (exact != null) {
+      return formatWithUnit(exact, widget.row.item.baseUnit.name);
+    }
+    for (final button in _levelButtons.entries) {
+      if (button.value == _level) return button.key;
+    }
+    return '';
+  }
+
+  // short message on what a finish or undo changed, so nobody also taps sealed - by mistake
+  // sealed is left out of the message when the tap didnt change it
+  // clearSnackBars = a fast next tap replaces the message instead of waiting in line
+  void _showChange(String what, int sealedBefore) {
+    final sealed = sealedBefore == _sealed
+        ? ''
+        : 'Sealed $sealedBefore → $_sealed, ';
+
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('$what. ${sealed}Opened: ${_openedText()}.'),
+          duration: _messageTime,
+        ),
+      );
   }
 
   // one restock in the list, like "+2 bottles · 2:15pm"
@@ -286,67 +329,85 @@ class _CountPanelState extends State<CountPanel> {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
 
-    return Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // title + close
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 8, 4),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.row.item.name,
-                        overflow: TextOverflow.ellipsis,
-                        style: text.titleMedium,
+    // LayoutBuilder = tells how much height the panel really gets right now
+    return LayoutBuilder(
+      builder: (context, size) {
+        final isTall = size.maxHeight >= _minHeightForBadges;
+
+        return Card(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // title + close
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 8, 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.row.item.name,
+                            overflow: TextOverflow.ellipsis,
+                            style: text.titleMedium,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(_endText(), style: text.bodySmall),
+                          // the table hides its badges while this panel is open, so they show here
+                          // the keyboard leaves too little height, they come back when it closes
+                          if (widget.row.hasBadges && isTall) ...[
+                            const SizedBox(height: 6),
+                            CountBadges(widget.row),
+                          ],
+                        ],
                       ),
-                      const SizedBox(height: 2),
-                      Text(_endText(), style: text.bodySmall),
+                    ),
+                    IconButton(
+                      onPressed: widget.onClose,
+                      icon: const Icon(Icons.close),
+                      tooltip: 'Close',
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(),
+              // scrolls since the keyboard takes half of the screen
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (_isContainer) ...[
+                        _sealedPart(context),
+                        _partLine(),
+                        _openedPart(context),
+                      ] else
+                        _numberField(),
+                      _partLine(),
+                      _inPart(context),
+                      _partLine(),
+                      if (_isContainer) ...[_outPart(context), _partLine()],
+                      _noteField(),
+                      _partLine(),
+                      _lowField(),
                     ],
                   ),
                 ),
-                IconButton(
-                  onPressed: widget.onClose,
-                  icon: const Icon(Icons.close),
-                  tooltip: 'Close',
-                ),
-              ],
-            ),
-          ),
-          const Divider(),
-          // scrolls since the keyboard takes half of the screen
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_isContainer) ...[
-                    _sealedPart(context),
-                    const SizedBox(height: 18),
-                    _openedPart(context),
-                  ] else
-                    _numberField(),
-                  const SizedBox(height: 18),
-                  _inPart(context),
-                  const SizedBox(height: 18),
-                  if (_isContainer) ...[
-                    _outPart(context),
-                    const SizedBox(height: 18),
-                  ],
-                  _noteField(),
-                  const SizedBox(height: 14),
-                  _lowField(),
-                ],
               ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
+    );
+  }
+
+  // the thin line between 2 parts of the panel, same look as the table rows
+  Widget _partLine() {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 14),
+      child: Divider(),
     );
   }
 

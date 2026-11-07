@@ -135,6 +135,9 @@ class CountRow {
       containerSize: item.containerSize,
     );
   }
+
+  // true when this row has at least 1 badge to show
+  bool get hasBadges => line.isOpening || restockRecommended;
 }
 
 // the draft day with all its rows, ordered by category then name
