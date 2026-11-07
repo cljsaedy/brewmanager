@@ -57,6 +57,9 @@ class _CountTabState extends State<CountTab> {
   // below this height the keyboard is open, then the title and filters hide so the rows still fit
   static const double _minHeightForHeader = 240;
 
+  // the search box stays small, the title gets the rest of the row
+  static const double _searchWidth = 180;
+
   // how wide each column is compared to the others (flex), header and rows use the same ones
   // the numbers get a bigger share while the panel is open since the table is much narrower then
   int get _nameFlex => _compact ? 8 : 6;
@@ -176,22 +179,30 @@ class _CountTabState extends State<CountTab> {
           : const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Row(
         children: [
-          if (showTitle) ...[
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Logbook', style: text.headlineSmall),
-                const SizedBox(height: 2),
-                Text(
-                  count == 1 ? '1 item' : '$count items',
-                  style: text.bodySmall,
-                ),
-              ],
-            ),
-            const SizedBox(width: 16),
-          ],
+          // the title takes the space on the left, this keeps the search box on the right
+          if (showTitle)
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Logbook', style: text.headlineSmall),
+                  const SizedBox(height: 2),
+                  Text(
+                    count == 1 ? '1 item' : '$count items',
+                    style: text.bodySmall,
+                  ),
+                ],
+              ),
+            )
+          else
+            const Spacer(),
+          const SizedBox(width: 16),
           // the key keeps this the same box when the title leaves the row, so typing isnt lost
-          Expanded(key: const Key('search_area'), child: _searchBox()),
+          SizedBox(
+            key: const Key('search_area'),
+            width: _searchWidth,
+            child: _searchBox(),
+          ),
         ],
       ),
     );
@@ -377,39 +388,39 @@ class _CountTabState extends State<CountTab> {
           decoration: const BoxDecoration(
             border: Border(bottom: BorderSide(color: AppColors.divider)),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    flex: _nameFlex,
-                    child: Text(
+              Expanded(
+                flex: _nameFlex,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
                       item.name,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
-                  ),
-                  Expanded(
-                    flex: _unitFlex,
-                    child: Text(
-                      isContainer ? item.containerName : item.baseUnit.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: _compact ? 12 : null),
-                    ),
-                  ),
-                  _number(shown(line.startQty)),
-                  _number(shown(line.inQty)),
-                  _number(_outText(line, isContainer)),
-                  _number(shown(line.endQty), bold: true),
-                ],
+                    if (line.isOpening || row.restockRecommended) ...[
+                      const SizedBox(height: 6),
+                      _badges(row),
+                    ],
+                  ],
+                ),
               ),
-              if (line.isOpening || row.restockRecommended) ...[
-                const SizedBox(height: 6),
-                _badges(row),
-              ],
+              Expanded(
+                flex: _unitFlex,
+                child: Text(
+                  isContainer ? item.containerName : item.baseUnit.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: _compact ? 12 : null),
+                ),
+              ),
+              _number(shown(line.startQty)),
+              _number(shown(line.inQty)),
+              _number(_outText(line, isContainer)),
+              _number(shown(line.endQty), bold: true),
             ],
           ),
         ),
@@ -417,8 +428,8 @@ class _CountTabState extends State<CountTab> {
     );
   }
 
-  // the badges go on their own line under the row, the name column is too narrow for them
-  // Wrap = they go under each other when both dont fit
+  // the badges under the item name
+  // Wrap = they go under each other when the column is narrow
   Widget _badges(CountRow row) {
     return Wrap(
       spacing: 6,
