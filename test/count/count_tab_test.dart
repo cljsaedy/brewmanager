@@ -363,7 +363,7 @@ void main() {
     );
 
     expect(find.text('Caramel syrup'), findsOneWidget);
-    expect(find.text('bottle'), findsOneWidget);
+    expect(find.text('bottle • ml'), findsOneWidget);
     expect(find.text('2.75'), findsOneWidget);
     expect(find.text('2'), findsOneWidget);
     expect(find.text('1'), findsOneWidget);
@@ -383,7 +383,7 @@ void main() {
     );
     await showTab(tester, draftOf([CountRow(line: line(), item: item)]));
 
-    expect(find.text('container'), findsOneWidget);
+    expect(find.text('container • g'), findsOneWidget);
   });
 
   testWidgets('number items show pieces used in Out', (tester) async {

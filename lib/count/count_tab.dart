@@ -413,9 +413,12 @@ class _CountTabState extends State<CountTab> {
               ),
               Expanded(
                 flex: _unitFlex,
+                // container items show both like "bottle • ml", 2 lines when the panel makes it narrow
                 child: Text(
-                  isContainer ? item.containerName : item.baseUnit.name,
-                  maxLines: 1,
+                  isContainer
+                      ? '${item.containerName} • ${item.baseUnit.name}'
+                      : item.baseUnit.name,
+                  maxLines: _compact ? 2 : 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: _compact ? 12 : null),
                 ),

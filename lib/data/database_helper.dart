@@ -15,8 +15,9 @@ class DatabaseHelper {
   // schema version, bump this + add upgrade code when the tables change after the app is in use
   // 1 = first schema, 2 = no menu_sizes table (every size is its own menu item),
   // 3 = recipe_lines.input_unit (the unit the owner typed),
-  // 4 = stock_items.needs_opening_count and count_lines.is_opening (opening count, rule 3)
-  static const int version = 4;
+  // 4 = stock_items.needs_opening_count and count_lines.is_opening (opening count, rule 3),
+  // 5 = day_results.actual_qty can be empty (an opening count has no usage, rule 7)
+  static const int version = 5;
 
   // the open database, null until first used
   static Database? _db;
@@ -98,6 +99,14 @@ class DatabaseHelper {
       await db.execute(
         'ALTER TABLE count_lines ADD COLUMN $lineIsOpeningColumn',
       );
+    }
+
+    // 4 -> 5: day_results.actual_qty can be empty
+    // sqlite cant change a column's rules, so the table gets made again
+    // it is always empty here, nothing saves to it before submit exists in feature 7
+    if (oldVersion < 5) {
+      await db.execute('DROP TABLE IF EXISTS day_results');
+      await db.execute(dayResultsTable);
     }
   }
 

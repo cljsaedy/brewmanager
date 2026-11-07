@@ -271,6 +271,30 @@ void main() {
       );
     });
 
+    test('an opening count saves with no actual', () async {
+      await db.insert('day_results', {
+        'day_id': dayId,
+        'stock_item_id': milkId,
+        'actual_is_exact': 0,
+      });
+
+      final row = (await db.query('day_results')).single;
+      expect(row['actual_qty'], isNull);
+    });
+
+    test('a gap with no actual is rejected', () async {
+      expect(
+        db.insert('day_results', {
+          'day_id': dayId,
+          'stock_item_id': milkId,
+          'expected_qty': 420,
+          'actual_is_exact': 1,
+          'gap': 80,
+        }),
+        rejected,
+      );
+    });
+
     test('same day and item twice in day_results is rejected', () async {
       final row = {
         'day_id': dayId,
@@ -457,6 +481,48 @@ void main() {
       final line = (await upgraded.query('count_lines')).single;
       expect(line['end_qty'], 3);
       expect(line['is_opening'], 0);
+
+      await upgraded.close();
+    });
+
+    test('version 4 day_results lets actual_qty be empty', () async {
+      // a version 4 file: the old day_results with actual_qty required
+      final old = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 4,
+          onCreate: (db, version) async {
+            await db.execute(
+              'CREATE TABLE stock_items (id INTEGER PRIMARY KEY, name TEXT)',
+            );
+            await db.execute(
+              'CREATE TABLE count_lines (id INTEGER PRIMARY KEY, end_qty REAL)',
+            );
+            await db.execute(
+              'CREATE TABLE day_results (day_id INTEGER, stock_item_id INTEGER, '
+              'actual_qty REAL NOT NULL, actual_is_exact INTEGER NOT NULL)',
+            );
+            await db.insert('stock_items', {'name': 'Milk'});
+            await db.insert('count_lines', {'end_qty': 3});
+          },
+        ),
+      );
+      await old.close();
+
+      final upgraded = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: DatabaseHelper.version,
+          onUpgrade: DatabaseHelper.onUpgrade,
+        ),
+      );
+
+      final columns = await upgraded.rawQuery('PRAGMA table_info(day_results)');
+      final actual = columns.firstWhere((c) => c['name'] == 'actual_qty');
+      expect(actual['notnull'], 0);
+      // the other tables keep their rows
+      expect(await upgraded.query('stock_items'), hasLength(1));
+      expect(await upgraded.query('count_lines'), hasLength(1));
 
       await upgraded.close();
     });

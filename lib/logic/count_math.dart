@@ -13,9 +13,19 @@ const double level50 = 0.5;
 const double level75 = 0.75;
 const double levelFull = 1;
 
+// how much is in the opened container, in base units
+// the exact amount if one was typed, otherwise level x container size
+// like 50% of a 2000 ml bottle = 1000 ml
+double openedAmount({
+  required double containerSize,
+  required double level,
+  required double? exactQty,
+}) {
+  return roundAmount(exactQty ?? level * containerSize);
+}
+
 // end of a container item, in base units
 // end = sealed x container size + the opened part
-// the opened part is the exact amount if one was typed, otherwise level x container size
 // like 2 sealed + 50% of a 2000 ml bottle = 5000 ml
 double containerEnd({
   required int sealed,
@@ -23,7 +33,11 @@ double containerEnd({
   required double level,
   required double? exactQty,
 }) {
-  final opened = exactQty ?? level * containerSize;
+  final opened = openedAmount(
+    containerSize: containerSize,
+    level: level,
+    exactQty: exactQty,
+  );
   return roundAmount(sealed * containerSize + opened);
 }
 

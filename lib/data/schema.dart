@@ -9,6 +9,25 @@ const String stockNeedsOpeningColumn =
 const String lineIsOpeningColumn =
     'is_opening INTEGER NOT NULL DEFAULT 0 CHECK (is_opening IN (0, 1))';
 
+// computed numbers per day per item, saved at submit and redone on correction
+// actual_qty is null on an opening count since that day has no usage (rule 7)
+// gap only exists when there is an actual, it is exact and there is an expected number
+// kept here so the new table and the version 5 upgrade make the exact same table
+const String dayResultsTable = '''
+  CREATE TABLE day_results (
+    day_id          INTEGER NOT NULL REFERENCES business_days(id),
+    stock_item_id   INTEGER NOT NULL REFERENCES stock_items(id),
+    expected_qty    REAL,
+    actual_qty      REAL,
+    actual_is_exact INTEGER NOT NULL CHECK (actual_is_exact IN (0, 1)),
+    gap             REAL,
+    restock_flag    INTEGER NOT NULL DEFAULT 0 CHECK (restock_flag IN (0, 1)),
+    PRIMARY KEY (day_id, stock_item_id),
+    CHECK (gap IS NULL OR (actual_qty IS NOT NULL AND actual_is_exact = 1
+                           AND expected_qty IS NOT NULL))
+  )
+''';
+
 // all the CREATE TABLE / CREATE INDEX statements for the database, run once when the db file is first made
 //
 // notes for every table:
@@ -121,21 +140,7 @@ const List<String> schemaStatements = [
   // for container checks, which look back at an item's past out events
   'CREATE INDEX idx_stock_events_item ON stock_events (stock_item_id, kind)',
 
-  // computed numbers per day per item, saved at submit and redone on correction
-  // gap only exists when the actual is exact and there is an expected number
-  '''
-  CREATE TABLE day_results (
-    day_id          INTEGER NOT NULL REFERENCES business_days(id),
-    stock_item_id   INTEGER NOT NULL REFERENCES stock_items(id),
-    expected_qty    REAL,
-    actual_qty      REAL NOT NULL,
-    actual_is_exact INTEGER NOT NULL CHECK (actual_is_exact IN (0, 1)),
-    gap             REAL,
-    restock_flag    INTEGER NOT NULL DEFAULT 0 CHECK (restock_flag IN (0, 1)),
-    PRIMARY KEY (day_id, stock_item_id),
-    CHECK (gap IS NULL OR (actual_is_exact = 1 AND expected_qty IS NOT NULL))
-  )
-  ''',
+  dayResultsTable,
 
   // containers finished vs what the recipes explain since the last finished one
   '''
