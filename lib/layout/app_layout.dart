@@ -7,6 +7,7 @@ import '../data/database_helper.dart';
 import '../data/owner_pin_store.dart';
 import '../owner/create_pin_screen.dart';
 import '../owner/enter_pin_screen.dart';
+import '../tally/tally_tab.dart';
 import '../widgets/placeholder_tab.dart';
 import 'side_rail.dart';
 import 'top_bar.dart';
@@ -177,9 +178,13 @@ class _AppLayoutState extends State<AppLayout> with RouteAware {
                             store: _countStore,
                             onChanged: _loadDraft,
                           ),
-                          const PlaceholderTab(
-                            title: 'Tally tab',
-                            note: 'The menu grid comes in Feature 5.',
+                          // starts fresh once the day is known and after the owner section, the menu could have changed
+                          TallyTab(
+                            key: ValueKey(
+                              '$_countTabVersion-${_draft?.day.id}',
+                            ),
+                            dayId: _draft?.day.id,
+                            store: _countStore?.tally,
                           ),
                           const PlaceholderTab(
                             title: 'History tab',

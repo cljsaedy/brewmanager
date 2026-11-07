@@ -8,6 +8,7 @@ import '../logic/count_math.dart';
 import '../logic/units.dart';
 import 'count_line.dart';
 import 'stock_item.dart';
+import 'tally_store.dart';
 
 // the draft day and its count lines (rule 3 and rule 5)
 class CountStore {
@@ -17,6 +18,9 @@ class CountStore {
   final Clock _clock;
 
   static final DateFormat _dateFormat = DateFormat('yyyy-MM-dd');
+
+  // the tally of the same days, it uses this same db
+  TallyStore get tally => TallyStore(_db);
 
   // gets the draft day ready and reads it, the count tab calls this every time it loads
   // transaction = the new day and all its lines get saved together or not at all

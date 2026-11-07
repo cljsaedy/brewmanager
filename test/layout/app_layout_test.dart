@@ -11,6 +11,7 @@ import 'package:brewmanager/data/stock_item_store.dart';
 import 'package:brewmanager/layout/app_layout.dart';
 import 'package:brewmanager/logic/units.dart';
 import 'package:brewmanager/main.dart';
+import 'package:brewmanager/tally/tally_tab.dart';
 import 'package:brewmanager/layout/top_bar.dart';
 
 import '../helpers/loading_layout.dart';
@@ -120,7 +121,7 @@ void main() {
 
     // count tab is the one showing, others are hidden
     expect(find.byType(CountTab), findsOneWidget);
-    expect(find.text('Tally tab'), findsNothing);
+    expect(find.byType(TallyTab), findsNothing);
     expect(find.text('Draft'), findsOneWidget);
   });
 
@@ -132,7 +133,7 @@ void main() {
     // pump = draw the next frame after the tap
     await tester.pump();
 
-    expect(find.text('Tally tab'), findsOneWidget);
+    expect(find.byType(TallyTab), findsOneWidget);
     expect(find.byType(CountTab), findsNothing);
   });
 
