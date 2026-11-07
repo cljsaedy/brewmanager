@@ -62,6 +62,23 @@ void main() {
     });
   });
 
+  group('container finished', () {
+    test('with sealed left, the next one gets opened full', () {
+      expect(sealedAfterFinish(2), 1);
+      expect(levelAfterFinish(2), levelFull);
+    });
+
+    test('the last sealed one still gets opened', () {
+      expect(sealedAfterFinish(1), 0);
+      expect(levelAfterFinish(1), levelFull);
+    });
+
+    test('with no sealed left, nothing stays open', () {
+      expect(sealedAfterFinish(0), 0);
+      expect(levelAfterFinish(0), levelNone);
+    });
+  });
+
   group('amountUsed', () {
     test('start plus in minus end', () {
       expect(amountUsed(start: 8, inQty: 0, end: 6), 2);

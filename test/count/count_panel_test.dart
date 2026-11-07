@@ -390,6 +390,127 @@ void main() {
     });
   });
 
+  group('container finished', () {
+    final finish = find.byKey(const Key('out_finish'));
+    final undo = find.byKey(const Key('out_undo'));
+    final plus = find.byKey(const Key('sealed_plus'));
+
+    String finishedShown(WidgetTester tester) {
+      return tester.widget<Text>(find.byKey(const Key('out_value'))).data!;
+    }
+
+    testWidgets('a number item has no OUT part', (tester) async {
+      await openPanel(tester, friesPack);
+      expect(finish, findsNothing);
+    });
+
+    testWidgets('with sealed left it opens the next one', (tester) async {
+      await openPanel(tester, syrup);
+      await tapVisible(tester, plus);
+      await tapVisible(tester, plus);
+      await tapVisible(tester, find.text('50%'));
+
+      await tapVisible(tester, finish);
+
+      expect(sealedShown(tester), '1');
+      expect(finishedShown(tester), '1');
+      final line = await savedLine(tester);
+      expect(line['out_count'], 1);
+      expect(line['level'], levelFull);
+      expect(line['end_qty'], 4000);
+    });
+
+    testWidgets('with no sealed left nothing stays open', (tester) async {
+      await openPanel(tester, syrup);
+      await tapVisible(tester, find.text('50%'));
+
+      await tapVisible(tester, finish);
+
+      final line = await savedLine(tester);
+      expect(line['out_count'], 1);
+      expect(line['level'], levelNone);
+      expect(line['end_qty'], 0);
+    });
+
+    testWidgets('undo puts back the typed exact amount', (tester) async {
+      await openPanel(tester, syrup);
+      await tapVisible(tester, plus);
+      await tester.enterText(find.byKey(const Key('exact_field')), '350');
+      await waitForDb(tester);
+
+      await tapVisible(tester, finish);
+      TextField box() {
+        return tester.widget<TextField>(find.byKey(const Key('exact_field')));
+      }
+
+      expect(box().controller!.text, '');
+
+      await tapVisible(tester, undo);
+
+      expect(box().controller!.text, '350');
+      expect(sealedShown(tester), '1');
+      expect(finishedShown(tester), '0');
+      final line = await savedLine(tester);
+      expect(line['exact_qty'], 350);
+      expect(line['end_qty'], 2350);
+    });
+
+    testWidgets('undo is off until something is finished', (tester) async {
+      await openPanel(tester, syrup);
+      bool undoIsOn() => tester.widget<IconButton>(undo).onPressed != null;
+
+      expect(undoIsOn(), isFalse);
+      await tapVisible(tester, finish);
+      expect(undoIsOn(), isTrue);
+    });
+
+    testWidgets('two fast taps both count', (tester) async {
+      await openPanel(tester, syrup);
+      await tester.ensureVisible(finish);
+      await tester.pumpAndSettle();
+
+      // no waiting between the taps, so the first save is not done yet
+      await tester.tap(finish);
+      await tester.tap(finish);
+      await waitForDb(tester);
+
+      expect(finishedShown(tester), '2');
+      expect((await savedLine(tester))['out_count'], 2);
+    });
+
+    testWidgets('a fast undo right after finishing still undoes it', (
+      tester,
+    ) async {
+      await openPanel(tester, syrup);
+      await tapVisible(tester, plus);
+      await tester.ensureVisible(undo);
+      await tester.pumpAndSettle();
+
+      await tester.tap(finish);
+      await tester.pump();
+      await tester.tap(undo);
+      await waitForDb(tester);
+
+      expect(sealedShown(tester), '1');
+      expect((await savedLine(tester))['out_count'], 0);
+    });
+
+    testWidgets(
+      'the finished count is still there when the panel opens again',
+      (tester) async {
+        await openPanel(tester, syrup);
+        await tapVisible(tester, finish);
+
+        await tester.tap(find.byTooltip('Close'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Caramel syrup'));
+        await tester.pumpAndSettle();
+
+        expect(finishedShown(tester), '1');
+      },
+    );
+  });
+
   testWidgets('tapping another row shows that item', (tester) async {
     await openPanel(tester, syrup);
     await tester.runAsync(() => StockItemStore(db).add(friesPack));

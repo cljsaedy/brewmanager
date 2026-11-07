@@ -47,6 +47,19 @@ int sealedAfterRemove(int sealed, int containers) {
   return max(0, sealed - containers);
 }
 
+// sealed after one tap on container finished (rule 3)
+// staff finish one container before opening the next, so a sealed one gets opened
+// with no sealed left it stays 0
+int sealedAfterFinish(int sealed) {
+  return max(0, sealed - 1);
+}
+
+// opened level after one tap on container finished, give it the sealed from before the tap
+// a sealed one was just opened = full, nothing sealed left = no container open
+double levelAfterFinish(int sealedBefore) {
+  return sealedBefore > 0 ? levelFull : levelNone;
+}
+
 // how much of an item was used in one day, in base units (rule 7)
 // used = start + in - end, like fries 8 at the start, none in, 6 at the end = 2 used
 // it can go below 0 when the barista counts more than the logbook says was there

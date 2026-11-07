@@ -19,7 +19,6 @@ const Map<String, double> _levelButtons = {
 };
 
 // the right side panel for the selected logbook row, everything here autosaves (rule 4)
-// the OUT part comes in the next step
 class CountPanel extends StatefulWidget {
   const CountPanel({
     super.key,
@@ -45,6 +44,12 @@ class _CountPanelState extends State<CountPanel> {
   late int _sealed;
   late double _level;
   late double? _exactQty;
+  // containers finished today, kept here too so undo turns on right after a tap
+  late int _finished;
+
+  // true while an undo is saving, its old values only come back from the db
+  // so count taps wait until then, otherwise they would build on the wrong numbers
+  bool _undoing = false;
 
   late final TextEditingController _exactBox;
   late final TextEditingController _numberBox;
@@ -70,6 +75,7 @@ class _CountPanelState extends State<CountPanel> {
     _sealed = line.sealed ?? 0;
     _level = line.level ?? levelNone;
     _exactQty = line.exactQty;
+    _finished = line.outCount;
 
     final exact = line.exactQty;
     _exactBox = TextEditingController(
@@ -106,12 +112,14 @@ class _CountPanelState extends State<CountPanel> {
   }
 
   void _setSealed(int sealed) {
+    if (_undoing) return;
     setState(() => _sealed = sealed);
     _saveCount();
   }
 
   // a level button replaces a typed exact amount, only one of them can be the opened part
   void _setLevel(double level) {
+    if (_undoing) return;
     setState(() {
       _level = level;
       _exactQty = null;
@@ -123,6 +131,7 @@ class _CountPanelState extends State<CountPanel> {
   // a typed amount replaces the level, an empty box goes back to the level
   // something that isnt a number yet, like a lone dot, is not saved
   void _onExactTyped(String text) {
+    if (_undoing) return;
     final isEmpty = text.trim().isEmpty;
     final value = readNumber(text);
     if (!isEmpty && value == null) return;
@@ -158,7 +167,7 @@ class _CountPanelState extends State<CountPanel> {
   // sealed changes here right away too, so a fast tap on + right after builds on the new number
   Future<void> _addRestock() async {
     final amount = _inAmount;
-    if (amount == null) return;
+    if (amount == null || _undoing) return;
 
     // cleared before saving so a double tap finds an empty box and adds nothing
     _inBox.clear();
@@ -176,7 +185,7 @@ class _CountPanelState extends State<CountPanel> {
 
   // takes the restock back out, same idea as adding one
   Future<void> _removeRestock(Restock restock) async {
-    if (!_removing.add(restock.id)) return;
+    if (_undoing || !_removing.add(restock.id)) return;
 
     setState(() {
       if (_isContainer) {
@@ -197,6 +206,46 @@ class _CountPanelState extends State<CountPanel> {
   void _afterRestock(CountLine saved) {
     if (mounted && !_isContainer) {
       _numberBox.text = plainNumber(saved.endQty);
+    }
+    widget.onChanged();
+  }
+
+  // one tap on container finished (rule 3), the store does the same math and saves it
+  // the numbers change here right away too, so a fast next tap builds on them
+  Future<void> _finishContainer() async {
+    if (_undoing) return;
+
+    final sealedBefore = _sealed;
+    setState(() {
+      _finished++;
+      _sealed = sealedAfterFinish(sealedBefore);
+      _level = levelAfterFinish(sealedBefore);
+      _exactQty = null;
+    });
+    _exactBox.clear();
+
+    await widget.store.finishContainer(widget.row);
+    widget.onChanged();
+  }
+
+  // undoes the last finished container, the old values were saved on its event
+  Future<void> _undoFinish() async {
+    if (_undoing || _finished == 0) return;
+
+    _undoing = true;
+    setState(() => _finished--);
+    final saved = await widget.store.undoFinish(widget.row);
+    _undoing = false;
+
+    // mounted = the panel could have been closed while saving
+    if (mounted) {
+      setState(() {
+        _sealed = saved.sealed!;
+        _level = saved.level ?? levelNone;
+        _exactQty = saved.exactQty;
+      });
+      final exact = saved.exactQty;
+      _exactBox.text = exact == null ? '' : plainNumber(exact);
     }
     widget.onChanged();
   }
@@ -281,6 +330,10 @@ class _CountPanelState extends State<CountPanel> {
                   const SizedBox(height: 18),
                   _inPart(context),
                   const SizedBox(height: 18),
+                  if (_isContainer) ...[
+                    _outPart(context),
+                    const SizedBox(height: 18),
+                  ],
                   _noteField(),
                   const SizedBox(height: 14),
                   _lowField(),
@@ -435,6 +488,45 @@ class _CountPanelState extends State<CountPanel> {
               ),
             ],
           ),
+      ],
+    );
+  }
+
+  // container items only, number items work out their Out from the count (rule 3)
+  Widget _outPart(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Out', style: text.titleSmall),
+        const SizedBox(height: 8),
+        OutlinedButton(
+          key: const Key('out_finish'),
+          onPressed: _finishContainer,
+          child: const Text('Container finished'),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            const Expanded(child: Text('Finished today')),
+            IconButton.outlined(
+              key: const Key('out_undo'),
+              onPressed: _finished == 0 ? null : _undoFinish,
+              icon: const Icon(Icons.remove),
+              tooltip: 'Undo last finished',
+            ),
+            SizedBox(
+              width: 52,
+              child: Text(
+                '$_finished',
+                key: const Key('out_value'),
+                textAlign: TextAlign.center,
+                style: text.titleMedium,
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }

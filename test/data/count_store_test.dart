@@ -612,6 +612,158 @@ void main() {
     });
   });
 
+  group('container finished', () {
+    // a syrup line with this count saved, gives back its row
+    Future<CountRow> rowWith({
+      required int sealed,
+      required double level,
+      double? exact,
+    }) async {
+      await stock.add(syrup());
+      final draft = await store.loadDraft();
+      await store.saveContainerCount(
+        draft.rows.single,
+        sealed: sealed,
+        level: level,
+        exactQty: exact,
+      );
+      return (await store.loadDraft()).rows.single;
+    }
+
+    Future<CountLine> currentLine() async {
+      return (await store.loadDraft()).rows.single.line;
+    }
+
+    test('with sealed left it opens the next one', () async {
+      final row = await rowWith(sealed: 2, level: level25);
+
+      await store.finishContainer(row);
+
+      final line = await currentLine();
+      expect(line.outCount, 1);
+      expect(line.sealed, 1);
+      expect(line.level, levelFull);
+      expect(line.endQty, 4000);
+      expect(line.endIsExact, isFalse);
+    });
+
+    test('with no sealed left nothing stays open', () async {
+      final row = await rowWith(sealed: 0, level: level25);
+
+      await store.finishContainer(row);
+
+      final line = await currentLine();
+      expect(line.outCount, 1);
+      expect(line.sealed, 0);
+      expect(line.level, levelNone);
+      expect(line.endQty, 0);
+      expect(line.endIsExact, isTrue);
+    });
+
+    test('it clears a typed exact amount', () async {
+      final row = await rowWith(sealed: 1, level: levelNone, exact: 350);
+
+      await store.finishContainer(row);
+
+      final line = await currentLine();
+      expect(line.exactQty, isNull);
+      expect(line.endQty, 2000);
+    });
+
+    test('it saves one out event with the values from before', () async {
+      final row = await rowWith(sealed: 1, level: levelNone, exact: 350);
+
+      await store.finishContainer(row);
+
+      final event = (await db.query('stock_events')).single;
+      expect(event['kind'], 'out');
+      expect(event['qty'], 1);
+      expect(event['prev_sealed'], 1);
+      expect(event['prev_level'], levelNone);
+      expect(event['prev_exact'], 350);
+    });
+
+    test('it does not change touched', () async {
+      await stock.add(syrup());
+      await store.finishContainer((await store.loadDraft()).rows.single);
+
+      expect((await currentLine()).touched, isFalse);
+    });
+
+    test('undo with sealed left puts everything back', () async {
+      final row = await rowWith(sealed: 2, level: level25);
+      await store.finishContainer(row);
+
+      await store.undoFinish(row);
+
+      final line = await currentLine();
+      expect(line.outCount, 0);
+      expect(line.sealed, 2);
+      expect(line.level, level25);
+      expect(line.exactQty, isNull);
+      expect(line.endQty, 4500);
+      expect(await db.query('stock_events'), isEmpty);
+    });
+
+    test('undo with no sealed left puts everything back', () async {
+      final row = await rowWith(sealed: 0, level: level75);
+      await store.finishContainer(row);
+
+      await store.undoFinish(row);
+
+      final line = await currentLine();
+      expect(line.sealed, 0);
+      expect(line.level, level75);
+      expect(line.endQty, 1500);
+    });
+
+    test('undo brings a typed exact amount back', () async {
+      final row = await rowWith(sealed: 1, level: levelNone, exact: 350);
+      await store.finishContainer(row);
+
+      final saved = await store.undoFinish(row);
+
+      expect(saved.exactQty, 350);
+      expect(saved.endQty, 2350);
+      expect(saved.endIsExact, isTrue);
+    });
+
+    test('undo only takes back the last one', () async {
+      final row = await rowWith(sealed: 3, level: level50);
+      await store.finishContainer(row);
+      await store.finishContainer(row);
+
+      await store.undoFinish(row);
+
+      final line = await currentLine();
+      expect(line.outCount, 1);
+      expect(line.sealed, 2);
+      expect(line.level, levelFull);
+    });
+
+    test('undo with nothing finished changes nothing', () async {
+      final row = await rowWith(sealed: 2, level: level50);
+
+      final saved = await store.undoFinish(row);
+
+      expect(saved.sealed, 2);
+      expect(saved.outCount, 0);
+    });
+
+    test('undo goes back to the exact values, a restock after the tap is '
+        'still in In but not in sealed', () async {
+      final row = await rowWith(sealed: 1, level: level50);
+      await store.finishContainer(row);
+      await store.addRestock(row, 2000);
+
+      await store.undoFinish(row);
+
+      final line = await currentLine();
+      expect(line.sealed, 1);
+      expect(line.inQty, 2000);
+    });
+  });
+
   group('when the owner changes an item during the day', () {
     test('a new container size works End out again, Start stays', () async {
       final id = await stock.add(syrup());

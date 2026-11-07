@@ -195,6 +195,87 @@ class CountStore {
     return CountLine.fromRow(rows.first);
   }
 
+  // one tap on container finished (rule 3)
+  // the values from before the tap go on the event so undo can put them back exactly
+  // the line stays untouched, the app filled in the new level, the barista did not count it
+  // transaction = the event and the line get saved together or not at all
+  Future<void> finishContainer(CountRow row) {
+    return _db.transaction((txn) async {
+      final line = await _readLine(txn, row.line.id);
+      final sealed = line.sealed!;
+      await txn.insert('stock_events', {
+        'day_id': row.line.dayId,
+        'stock_item_id': row.item.id,
+        'kind': 'out',
+        'qty': 1,
+        'prev_sealed': sealed,
+        'prev_level': line.level ?? levelNone,
+        'prev_exact': line.exactQty,
+        'created_at': _clock().toIso8601String(),
+      });
+
+      final count = _containerValues(
+        row.item,
+        sealed: sealedAfterFinish(sealed),
+        level: levelAfterFinish(sealed),
+        exactQty: null,
+      );
+      await _saveFinishChange(txn, row, count);
+    });
+  }
+
+  // removes the last finished event and puts sealed, level and exact back to what they were (rule 3)
+  // that also drops anything changed on the line after that tap, the rule wants them back exactly
+  // gives back the saved line so the panel can show the old values
+  Future<CountLine> undoFinish(CountRow row) {
+    return _db.transaction((txn) async {
+      final events = await txn.query(
+        'stock_events',
+        where: "day_id = ? AND stock_item_id = ? AND kind = 'out'",
+        whereArgs: [row.line.dayId, row.item.id],
+        orderBy: 'id DESC',
+        limit: 1,
+      );
+      if (events.isEmpty) return _readLine(txn, row.line.id);
+
+      final last = events.first;
+      await txn.delete(
+        'stock_events',
+        where: 'id = ?',
+        whereArgs: [last['id']],
+      );
+      final count = _containerValues(
+        row.item,
+        sealed: last['prev_sealed'] as int,
+        level: (last['prev_level'] as num).toDouble(),
+        exactQty: (last['prev_exact'] as num?)?.toDouble(),
+      );
+      await _saveFinishChange(txn, row, count);
+      return _readLine(txn, row.line.id);
+    });
+  }
+
+  // saves the new count fields and out_count, out_count is always the number of the day's OUT events
+  Future<void> _saveFinishChange(
+    Transaction txn,
+    CountRow row,
+    Map<String, Object?> count,
+  ) async {
+    final total = await txn.rawQuery(
+      '''
+      SELECT COUNT(*) AS total FROM stock_events
+      WHERE day_id = ? AND stock_item_id = ? AND kind = 'out'
+      ''',
+      [row.line.dayId, row.item.id],
+    );
+    await txn.update(
+      'count_lines',
+      {...count, 'out_count': total.first['total']},
+      where: 'id = ?',
+      whereArgs: [row.line.id],
+    );
+  }
+
   // the date of a new draft: the day after the last submitted or closed day
   // so a date never goes back or repeats (rule 5)
   // no days yet = today on the tablet, the first count date from the setup wizard comes in feature 11
