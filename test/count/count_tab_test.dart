@@ -171,6 +171,85 @@ void main() {
     });
   });
 
+  group('search', () {
+    final DraftDay mixed = draftOf([
+      CountRow(line: line(end: 6), item: friesPack),
+      CountRow(line: line(end: 1000), item: syrup),
+      CountRow(
+        line: line(end: 5000),
+        item: syrup.copyWith(name: 'Vanilla syrup'),
+      ),
+    ]);
+
+    Future<void> search(WidgetTester tester, String words) async {
+      await tester.enterText(find.byKey(const Key('count_search')), words);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('finds any part of the name, ignoring case', (tester) async {
+      await showTab(tester, mixed);
+
+      await search(tester, '  SYRUP ');
+
+      expect(find.text('Caramel syrup'), findsOneWidget);
+      expect(find.text('Vanilla syrup'), findsOneWidget);
+      expect(find.text('Fries pack'), findsNothing);
+      // the title goes too since no row is left under it
+      expect(find.text('FOOD'), findsNothing);
+      expect(find.text('3 items'), findsOneWidget);
+    });
+
+    testWidgets('works together with the restock filter', (tester) async {
+      await showTab(tester, mixed);
+      await tester.tap(find.byKey(const Key('filter_restock')));
+      await tester.pumpAndSettle();
+
+      await search(tester, 'syrup');
+
+      // vanilla has 2.5 bottles, above its level of 1
+      expect(find.text('Caramel syrup'), findsOneWidget);
+      expect(find.text('Vanilla syrup'), findsNothing);
+    });
+
+    testWidgets('no match says so', (tester) async {
+      await showTab(tester, mixed);
+
+      await search(tester, 'matcha');
+
+      expect(find.text('No items match "matcha"'), findsOneWidget);
+    });
+
+    testWidgets('the x clears the search', (tester) async {
+      await showTab(tester, mixed);
+      await search(tester, 'matcha');
+
+      await tester.tap(find.byKey(const Key('count_search_clear')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Fries pack'), findsOneWidget);
+      expect(find.byKey(const Key('count_search_clear')), findsNothing);
+    });
+
+    testWidgets('typing stays when the keyboard opens', (tester) async {
+      await showTab(tester, mixed);
+      await tester.tap(find.byKey(const Key('count_search')));
+      await search(tester, 'syrup');
+
+      tester.view.viewInsets = const FakeViewPadding(bottom: 500);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Logbook'), findsNothing);
+      final box = tester.widget<TextField>(
+        find.byKey(const Key('count_search')),
+      );
+      expect(box.focusNode!.hasFocus, isTrue);
+      expect(box.controller!.text, 'syrup');
+      expect(find.text('Fries pack'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   testWidgets('shows a loading circle until the draft is ready', (
     tester,
   ) async {

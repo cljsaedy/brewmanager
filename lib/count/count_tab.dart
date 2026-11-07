@@ -47,6 +47,10 @@ class _CountTabState extends State<CountTab> {
 
   _CountFilter _filter = _CountFilter.all;
 
+  // the text in the search box and whether the box has the keyboard
+  final TextEditingController _search = TextEditingController();
+  final FocusNode _searchFocus = FocusNode();
+
   // width of the panel, the table gets the rest
   static const double _panelWidth = 340;
 
@@ -54,9 +58,17 @@ class _CountTabState extends State<CountTab> {
   static const double _minHeightForHeader = 240;
 
   // how wide each column is compared to the others (flex), header and rows use the same ones
-  static const int _nameFlex = 6;
-  static const int _unitFlex = 2;
-  static const int _numberFlex = 2;
+  // the numbers get a bigger share while the panel is open since the table is much narrower then
+  int get _nameFlex => _compact ? 8 : 6;
+  int get _unitFlex => _compact ? 6 : 2;
+  int get _numberFlex => _compact ? 4 : 2;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    _searchFocus.dispose();
+    super.dispose();
+  }
 
   // the row of the open panel, null if nothing is selected or the item is gone
   CountRow? get _selectedRow {
@@ -66,10 +78,12 @@ class _CountTabState extends State<CountTab> {
     return null;
   }
 
-  // while the panel is open the table is too narrow for the unit, the panel shows it anyway
+  // while the panel is open the table is narrow, so the columns change to still fit the unit
   bool get _compact => _selectedRow != null;
 
   void _select(int? itemId) {
+    // closes the keyboard from searching, or it would cover the panel that just opened
+    _searchFocus.unfocus();
     setState(() => _selectedItemId = itemId);
   }
 
@@ -100,11 +114,26 @@ class _CountTabState extends State<CountTab> {
     );
   }
 
-  // the rows the filter lets through
+  // the rows the filter and the search both let through
   // an open panel stays open even if its row leaves the list here, it is found in all the rows
   List<CountRow> _filtered(List<CountRow> rows) {
-    if (_filter == _CountFilter.all) return rows;
-    return rows.where((row) => row.restockRecommended).toList();
+    final search = _search.text.trim().toLowerCase();
+
+    return rows.where((row) {
+      if (_filter == _CountFilter.restock && !row.restockRecommended) {
+        return false;
+      }
+      return row.item.name.toLowerCase().contains(search);
+    }).toList();
+  }
+
+  // what goes in the card under the column names
+  Widget _tableBody(BuildContext context, List<CountRow>? rows) {
+    if (rows == null) return const Center(child: CircularProgressIndicator());
+    if (rows.isEmpty) return _emptyMessage(context);
+
+    final shown = _filtered(rows);
+    return shown.isEmpty ? _noRowsMessage(context) : _table(shown);
   }
 
   Widget _tableCard(BuildContext context) {
@@ -113,26 +142,17 @@ class _CountTabState extends State<CountTab> {
     // LayoutBuilder = tells how much height the card really gets right now
     return LayoutBuilder(
       builder: (context, size) {
+        final isTall = size.maxHeight >= _minHeightForHeader;
+
         return Card(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (size.maxHeight >= _minHeightForHeader) ...[
-                _header(context, rows),
-                _filters(),
-                const SizedBox(height: 4),
-              ],
+              _header(context, rows, showTitle: isTall),
+              if (isTall) ...[_filters(), const SizedBox(height: 4)],
               _columnTitles(),
               // Expanded = the list gets all the height left in the card and scrolls inside it
-              Expanded(
-                child: rows == null
-                    ? const Center(child: CircularProgressIndicator())
-                    : rows.isEmpty
-                    ? _emptyMessage(context)
-                    : _filtered(rows).isEmpty
-                    ? _noRestockMessage(context)
-                    : _table(_filtered(rows)),
-              ),
+              Expanded(child: _tableBody(context, rows)),
             ],
           ),
         );
@@ -140,20 +160,64 @@ class _CountTabState extends State<CountTab> {
     );
   }
 
-  // title and item count
-  Widget _header(BuildContext context, List<CountRow>? rows) {
+  // title, item count and the search box
+  // the search box stays when the keyboard opens, if it hid it would lose the keyboard while typing
+  Widget _header(
+    BuildContext context,
+    List<CountRow>? rows, {
+    required bool showTitle,
+  }) {
     final text = Theme.of(context).textTheme;
     final count = rows?.length ?? 0;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 20, 20, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: showTitle
+          ? const EdgeInsets.fromLTRB(24, 20, 20, 12)
+          : const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Row(
         children: [
-          Text('Logbook', style: text.headlineSmall),
-          const SizedBox(height: 2),
-          Text(count == 1 ? '1 item' : '$count items', style: text.bodySmall),
+          if (showTitle) ...[
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Logbook', style: text.headlineSmall),
+                const SizedBox(height: 2),
+                Text(
+                  count == 1 ? '1 item' : '$count items',
+                  style: text.bodySmall,
+                ),
+              ],
+            ),
+            const SizedBox(width: 16),
+          ],
+          // the key keeps this the same box when the title leaves the row, so typing isnt lost
+          Expanded(key: const Key('search_area'), child: _searchBox()),
         ],
+      ),
+    );
+  }
+
+  // finds items by name, only the words typed here, nothing gets saved
+  Widget _searchBox() {
+    return TextField(
+      key: const Key('count_search'),
+      controller: _search,
+      focusNode: _searchFocus,
+      textInputAction: TextInputAction.search,
+      // redraws the table on every letter
+      onChanged: (_) => setState(() {}),
+      decoration: InputDecoration(
+        hintText: 'Search name',
+        isDense: true,
+        prefixIcon: const Icon(Icons.search),
+        suffixIcon: _search.text.isEmpty
+            ? null
+            : IconButton(
+                key: const Key('count_search_clear'),
+                tooltip: 'Clear search',
+                icon: const Icon(Icons.close),
+                onPressed: () => setState(_search.clear),
+              ),
       ),
     );
   }
@@ -208,15 +272,14 @@ class _CountTabState extends State<CountTab> {
       ),
       child: Row(
         children: [
-          const Expanded(
+          Expanded(
             flex: _nameFlex,
-            child: Text('Name', style: style),
+            child: const Text('Name', style: style),
           ),
-          if (!_compact)
-            const Expanded(
-              flex: _unitFlex,
-              child: Text('Unit', style: style),
-            ),
+          Expanded(
+            flex: _unitFlex,
+            child: const Text('Unit', style: style),
+          ),
           number('Start'),
           number('In'),
           number('Out'),
@@ -251,12 +314,20 @@ class _CountTabState extends State<CountTab> {
     );
   }
 
-  // shown when the restock filter is on and no item is low
-  Widget _noRestockMessage(BuildContext context) {
+  // shown when the search or the restock filter lets no row through
+  Widget _noRowsMessage(BuildContext context) {
+    final search = _search.text.trim();
+
     return Center(
-      child: Text(
-        'No items need restocking',
-        style: Theme.of(context).textTheme.titleMedium,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Text(
+          search.isEmpty
+              ? 'No items need restocking'
+              : 'No items match "$search"',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
       ),
     );
   }
@@ -306,57 +377,58 @@ class _CountTabState extends State<CountTab> {
           decoration: const BoxDecoration(
             border: Border(bottom: BorderSide(color: AppColors.divider)),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                flex: _nameFlex,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
+              Row(
+                children: [
+                  Expanded(
+                    flex: _nameFlex,
+                    child: Text(
                       item.name,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
-                    if (line.isOpening || row.restockRecommended) ...[
-                      const SizedBox(height: 6),
-                      // Wrap = badges go under each other when the column is narrow
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          if (line.isOpening)
-                            const StatusChip(
-                              label: openingCountBadge,
-                              tone: ChipTone.warn,
-                            ),
-                          if (row.restockRecommended)
-                            const StatusChip(
-                              label: restockBadge,
-                              tone: ChipTone.warn,
-                            ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (!_compact)
-                Expanded(
-                  flex: _unitFlex,
-                  child: Text(
-                    isContainer ? item.containerName : item.baseUnit.name,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-              _number(shown(line.startQty)),
-              _number(shown(line.inQty)),
-              _number(_outText(line, isContainer)),
-              _number(shown(line.endQty), bold: true),
+                  Expanded(
+                    flex: _unitFlex,
+                    child: Text(
+                      isContainer ? item.containerName : item.baseUnit.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: _compact ? 12 : null),
+                    ),
+                  ),
+                  _number(shown(line.startQty)),
+                  _number(shown(line.inQty)),
+                  _number(_outText(line, isContainer)),
+                  _number(shown(line.endQty), bold: true),
+                ],
+              ),
+              if (line.isOpening || row.restockRecommended) ...[
+                const SizedBox(height: 6),
+                _badges(row),
+              ],
             ],
           ),
         ),
       ),
+    );
+  }
+
+  // the badges go on their own line under the row, the name column is too narrow for them
+  // Wrap = they go under each other when both dont fit
+  Widget _badges(CountRow row) {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        if (row.line.isOpening)
+          const StatusChip(label: openingCountBadge, tone: ChipTone.warn),
+        if (row.restockRecommended)
+          const StatusChip(label: restockBadge, tone: ChipTone.warn),
+      ],
     );
   }
 

@@ -96,13 +96,15 @@ void main() {
     expect(find.byType(CountPanel), findsNothing);
   });
 
-  testWidgets('the table hides Unit while the panel is open', (tester) async {
+  testWidgets('the table keeps Unit while the panel is open', (tester) async {
     await openPanel(tester, syrup);
-    expect(find.text('Unit'), findsNothing);
+    expect(find.text('Unit'), findsOneWidget);
+    expect(find.text('bottle'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Close'));
     await tester.pumpAndSettle();
     expect(find.text('Unit'), findsOneWidget);
+    expect(find.text('bottle'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
