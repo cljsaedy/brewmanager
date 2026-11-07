@@ -524,6 +524,7 @@ class CountStore {
       final itemId = row['stock_item_id'] as int;
       restocks.putIfAbsent(itemId, () => []).add(Restock.fromRow(row));
     }
+    final usedToday = await _usedItemIds(dayId);
 
     final rows = <CountRow>[];
     for (final itemRow in itemRows) {
@@ -533,9 +534,29 @@ class CountStore {
           line: lines[item.id]!,
           item: item,
           restocks: restocks[item.id] ?? const [],
+          usedToday: usedToday.contains(item.id),
         ),
       );
     }
     return DraftDay(day: BusinessDay.fromRow(dayRows.first), rows: rows);
+  }
+
+  // the stock items the day's tally used = in an active recipe line of a tallied menu item
+  // only ids come back, never amounts, expected numbers stay off the barista side
+  // DISTINCT = an item used by 2 menu items comes back once
+  Future<Set<int>> _usedItemIds(int dayId) async {
+    final rows = await _db.rawQuery(
+      '''
+      SELECT DISTINCT recipe_lines.stock_item_id
+      FROM tally_lines
+      JOIN recipe_lines
+        ON recipe_lines.menu_item_id = tally_lines.menu_item_id
+      WHERE tally_lines.day_id = ?
+        AND tally_lines.qty > 0
+        AND recipe_lines.is_archived = 0
+      ''',
+      [dayId],
+    );
+    return {for (final row in rows) row['stock_item_id'] as int};
   }
 }

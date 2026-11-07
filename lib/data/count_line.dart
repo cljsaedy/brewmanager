@@ -119,12 +119,19 @@ class CountRow {
     required this.line,
     required this.item,
     this.restocks = const [],
+    this.usedToday = false,
   });
 
   final CountLine line;
   final StockItem item;
   // today's restocks, oldest first
   final List<Restock> restocks;
+  // true when a recipe of a menu item in today's tally uses this item
+  final bool usedToday;
+
+  // true when this row gets the double check badge
+  // used today and not counted yet, it leaves once the barista touches the count
+  bool get needsDoubleCheck => usedToday && !line.touched;
 
   // true when this row gets the restock recommended badge (rule 8)
   bool get restockRecommended {
@@ -137,7 +144,8 @@ class CountRow {
   }
 
   // true when this row has at least 1 badge to show
-  bool get hasBadges => line.isOpening || restockRecommended;
+  bool get hasBadges =>
+      needsDoubleCheck || line.isOpening || restockRecommended;
 }
 
 // the draft day with all its rows, ordered by category then name

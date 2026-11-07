@@ -41,6 +41,7 @@ CountLine line({
   int out = 0,
   double end = 0,
   bool isOpening = false,
+  bool touched = false,
 }) {
   return CountLine(
     id: 1,
@@ -55,7 +56,7 @@ CountLine line({
     exactQty: null,
     endQty: end,
     endIsExact: true,
-    touched: false,
+    touched: touched,
     isOpening: isOpening,
     note: null,
   );
@@ -247,6 +248,86 @@ void main() {
       expect(box.focusNode!.hasFocus, isTrue);
       expect(box.controller!.text, 'syrup');
       expect(find.text('Fries pack'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('used today', () {
+    final badge = find.text(doubleCheckBadge);
+
+    testWidgets('the badge shows until the line is touched', (tester) async {
+      await showTab(
+        tester,
+        draftOf([
+          CountRow(line: line(end: 6), item: friesPack, usedToday: true),
+          CountRow(
+            line: line(end: 5000, touched: true),
+            item: syrup,
+            usedToday: true,
+          ),
+        ]),
+      );
+
+      expect(badge, findsOneWidget);
+    });
+
+    testWidgets('not used shows no badge', (tester) async {
+      await showTab(
+        tester,
+        draftOf([CountRow(line: line(end: 6), item: friesPack)]),
+      );
+      expect(badge, findsNothing);
+    });
+
+    testWidgets('the filter shows used items, touched ones too', (
+      tester,
+    ) async {
+      await showTab(
+        tester,
+        draftOf([
+          CountRow(line: line(end: 6), item: friesPack),
+          CountRow(
+            line: line(end: 5000, touched: true),
+            item: syrup,
+            usedToday: true,
+          ),
+        ]),
+      );
+
+      await tester.tap(find.byKey(const Key('filter_used')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Caramel syrup'), findsOneWidget);
+      expect(find.text('Fries pack'), findsNothing);
+    });
+
+    testWidgets('nothing used says so', (tester) async {
+      await showTab(
+        tester,
+        draftOf([CountRow(line: line(end: 6), item: friesPack)]),
+      );
+
+      await tester.tap(find.byKey(const Key('filter_used')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('No items used today'), findsOneWidget);
+    });
+
+    testWidgets('a row can show all 3 badges', (tester) async {
+      await showTab(
+        tester,
+        draftOf([
+          CountRow(
+            line: line(isOpening: true),
+            item: friesPack,
+            usedToday: true,
+          ),
+        ]),
+      );
+
+      expect(badge, findsOneWidget);
+      expect(find.text(openingCountBadge), findsOneWidget);
+      expect(restockChip, findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });

@@ -3,6 +3,9 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:brewmanager/data/count_line.dart';
 import 'package:brewmanager/data/count_store.dart';
+import 'package:brewmanager/data/menu_item.dart';
+import 'package:brewmanager/data/menu_item_store.dart';
+import 'package:brewmanager/data/recipe_store.dart';
 import 'package:brewmanager/data/stock_item.dart';
 import 'package:brewmanager/data/stock_item_store.dart';
 import 'package:brewmanager/logic/count_math.dart';
@@ -879,6 +882,97 @@ void main() {
       expect(line.sealed, isNull);
       expect(line.level, isNull);
       expect(line.endQty, 0);
+    });
+  });
+
+  group('used today', () {
+    late int stockId;
+    late int latteId;
+    late int dayId;
+    late MenuItemStore menu;
+    late RecipeStore recipes;
+
+    setUp(() async {
+      menu = MenuItemStore(db, clock: () => now);
+      recipes = RecipeStore(db, clock: () => now);
+      stockId = await stock.add(syrup());
+      await stock.add(friesPack);
+      latteId = await menu.add(
+        const MenuItem(name: 'Latte', category: 'Coffee'),
+      );
+      await recipes.addLine(latteId, stockId, 30);
+      dayId = (await store.loadDraft()).day.id;
+    });
+
+    Future<CountRow> syrupRow() async {
+      final draft = await store.loadDraft();
+      return draft.rows.firstWhere((row) => row.item.id == stockId);
+    }
+
+    test('nothing tallied = not used', () async {
+      expect((await syrupRow()).usedToday, isFalse);
+    });
+
+    test('a tallied menu item uses its recipe items only', () async {
+      await store.tally.add(dayId, latteId);
+
+      final draft = await store.loadDraft();
+      final used = draft.rows.where((row) => row.usedToday);
+      expect(used.map((row) => row.item.name), ['Caramel syrup']);
+    });
+
+    test('a tally taken back to 0 is not used', () async {
+      await store.tally.add(dayId, latteId);
+      await store.tally.remove(dayId, latteId);
+
+      expect((await syrupRow()).usedToday, isFalse);
+    });
+
+    test('2 menu items with the same item give one row', () async {
+      final mochaId = await menu.add(
+        const MenuItem(name: 'Mocha', category: 'Coffee'),
+      );
+      await recipes.addLine(mochaId, stockId, 10);
+      await store.tally.add(dayId, latteId);
+      await store.tally.add(dayId, mochaId);
+
+      final draft = await store.loadDraft();
+      expect(draft.rows.where((row) => row.usedToday), hasLength(1));
+    });
+
+    test('a removed recipe line doesnt count', () async {
+      final lines = await recipes.lines(latteId);
+      await recipes.removeLine(lines.single.id);
+      await store.tally.add(dayId, latteId);
+
+      expect((await syrupRow()).usedToday, isFalse);
+    });
+
+    test('a tally from another day doesnt count', () async {
+      final oldDay = await db.insert('business_days', {
+        'business_date': '2020-01-01',
+        'status': 'closed',
+      });
+      await store.tally.add(oldDay, latteId);
+
+      expect((await syrupRow()).usedToday, isFalse);
+    });
+
+    test('the badge leaves once the count is touched, used stays', () async {
+      await store.tally.add(dayId, latteId);
+      var row = await syrupRow();
+      expect(row.needsDoubleCheck, isTrue);
+
+      await store.saveContainerCount(
+        row,
+        sealed: 1,
+        level: levelNone,
+        exactQty: null,
+      );
+
+      row = await syrupRow();
+      expect(row.needsDoubleCheck, isFalse);
+      expect(row.usedToday, isTrue);
     });
   });
 }

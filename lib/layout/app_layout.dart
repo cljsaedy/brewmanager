@@ -185,6 +185,7 @@ class _AppLayoutState extends State<AppLayout> with RouteAware {
                             ),
                             dayId: _draft?.day.id,
                             store: _countStore?.tally,
+                            onChanged: _loadDraft,
                           ),
                           const PlaceholderTab(
                             title: 'History tab',

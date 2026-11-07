@@ -10,8 +10,8 @@ import '../widgets/category_title.dart';
 import 'count_badges.dart';
 import 'count_panel.dart';
 
-// which rows the table shows, the used today filter comes in feature 5 since it needs the tally
-enum _CountFilter { all, restock }
+// which rows the table shows
+enum _CountFilter { all, usedToday, restock }
 
 // the barista's logbook: one row per stock item, grouped by category
 // the app layout loads the draft and passes it here since the top bar needs the same date
@@ -117,10 +117,13 @@ class _CountTabState extends State<CountTab> {
     final search = _search.text.trim().toLowerCase();
 
     return rows.where((row) {
-      if (_filter == _CountFilter.restock && !row.restockRecommended) {
-        return false;
-      }
-      return row.item.name.toLowerCase().contains(search);
+      // the used today filter keeps touched items too, so the barista can go back over them
+      final passesFilter = switch (_filter) {
+        _CountFilter.all => true,
+        _CountFilter.usedToday => row.usedToday,
+        _CountFilter.restock => row.restockRecommended,
+      };
+      return passesFilter && row.item.name.toLowerCase().contains(search);
     }).toList();
   }
 
@@ -247,6 +250,7 @@ class _CountTabState extends State<CountTab> {
         runSpacing: 8,
         children: [
           chip(const Key('filter_all'), 'All', _CountFilter.all),
+          chip(const Key('filter_used'), 'Used Today', _CountFilter.usedToday),
           chip(const Key('filter_restock'), restockBadge, _CountFilter.restock),
         ],
       ),
@@ -319,17 +323,22 @@ class _CountTabState extends State<CountTab> {
     );
   }
 
-  // shown when the search or the restock filter lets no row through
-  Widget _noRowsMessage(BuildContext context) {
+  // what to say when the search or a filter lets no row through
+  String _noRowsText() {
     final search = _search.text.trim();
+    if (search.isNotEmpty) return 'No items match "$search"';
 
+    return _filter == _CountFilter.usedToday
+        ? 'No items used today'
+        : 'No items need restocking';
+  }
+
+  Widget _noRowsMessage(BuildContext context) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Text(
-          search.isEmpty
-              ? 'No items need restocking'
-              : 'No items match "$search"',
+          _noRowsText(),
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.titleMedium,
         ),

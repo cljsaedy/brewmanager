@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import '../data/count_line.dart';
 import '../widgets/status_chip.dart';
 
+// badge of an item the tally used today that the barista has not counted yet
+const String doubleCheckBadge = 'Used Today | Double Check';
+
 // badge of an item on its opening count day (rule 3)
 const String openingCountBadge = 'Opening count: please count';
 
@@ -22,6 +25,8 @@ class CountBadges extends StatelessWidget {
       spacing: 6,
       runSpacing: 6,
       children: [
+        if (row.needsDoubleCheck)
+          const StatusChip(label: doubleCheckBadge, tone: ChipTone.warn),
         if (row.line.isOpening)
           const StatusChip(label: openingCountBadge, tone: ChipTone.warn),
         if (row.restockRecommended)

@@ -10,11 +10,18 @@ import '../widgets/category_title.dart';
 // left = menu grid by category, right = today's list with - and + to fix mistakes
 // the grid can only add, so a stray tap there can never lower a number
 class TallyTab extends StatefulWidget {
-  const TallyTab({super.key, required this.dayId, required this.store});
+  const TallyTab({
+    super.key,
+    required this.dayId,
+    required this.store,
+    required this.onChanged,
+  });
 
   // these 2 are null while still loading from the db
   final int? dayId;
   final TallyStore? store;
+  // called after every save, the count tab needs it for its used today badges
+  final VoidCallback onChanged;
 
   @override
   State<TallyTab> createState() => _TallyTabState();
@@ -62,6 +69,7 @@ class _TallyTabState extends State<TallyTab> {
   Future<void> _add(MenuItem item) async {
     setState(() => _quantities[item.id!] = _qty(item) + 1);
     await widget.store!.add(widget.dayId!, item.id!);
+    widget.onChanged();
   }
 
   Future<void> _remove(MenuItem item) async {
@@ -69,6 +77,7 @@ class _TallyTabState extends State<TallyTab> {
 
     setState(() => _quantities[item.id!] = _qty(item) - 1);
     await widget.store!.remove(widget.dayId!, item.id!);
+    widget.onChanged();
   }
 
   @override

@@ -2,11 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:brewmanager/count/count_badges.dart';
 import 'package:brewmanager/data/count_store.dart';
 import 'package:brewmanager/data/menu_item.dart';
 import 'package:brewmanager/data/menu_item_store.dart';
+import 'package:brewmanager/data/recipe_store.dart';
+import 'package:brewmanager/data/stock_item.dart';
+import 'package:brewmanager/data/stock_item_store.dart';
 import 'package:brewmanager/data/tally_store.dart';
 import 'package:brewmanager/layout/app_layout.dart';
+import 'package:brewmanager/logic/units.dart';
 import 'package:brewmanager/main.dart';
 import 'package:brewmanager/tally/tally_tab.dart';
 import 'package:brewmanager/theme/app_theme.dart';
@@ -49,13 +54,17 @@ void main() {
     return id!;
   }
 
-  Future<void> showTab(WidgetTester tester) async {
+  Future<void> showTab(WidgetTester tester, {VoidCallback? onChanged}) async {
     useTabletScreen(tester);
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
         home: Scaffold(
-          body: TallyTab(dayId: dayId, store: TallyStore(db)),
+          body: TallyTab(
+            dayId: dayId,
+            store: TallyStore(db),
+            onChanged: onChanged ?? () {},
+          ),
         ),
       ),
     );
@@ -77,7 +86,9 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
-        home: const Scaffold(body: TallyTab(dayId: null, store: null)),
+        home: Scaffold(
+          body: TallyTab(dayId: null, store: null, onChanged: () {}),
+        ),
       ),
     );
 
@@ -196,6 +207,111 @@ void main() {
     await showTab(tester);
 
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('every save tells the app layout', (tester) async {
+    final id = await addItem(tester, 'Latte');
+    var calls = 0;
+    await showTab(tester, onChanged: () => calls++);
+
+    await tapKey(tester, 'tally_tile_$id');
+    await tapKey(tester, 'tally_minus_$id');
+
+    expect(calls, 2);
+  });
+
+  group('used today on the count tab', () {
+    final badge = find.text(doubleCheckBadge);
+
+    // a syrup in a latte's recipe, and the app open with the latte tile ready
+    Future<int> openApp(WidgetTester tester) async {
+      final stockId = await tester.runAsync(
+        () => StockItemStore(db).add(
+          const StockItem(
+            name: 'Caramel syrup',
+            category: 'Syrups',
+            baseUnit: BaseUnit.ml,
+            countType: CountType.container,
+            containerLabel: 'bottle',
+            containerSize: 2000,
+            lowMode: LowMode.containers,
+            lowValue: 0,
+          ),
+        ),
+      );
+      final menuId = await addItem(tester, 'Latte');
+      await tester.runAsync(
+        () => RecipeStore(db).addLine(menuId, stockId!, 30),
+      );
+
+      useTabletScreen(tester);
+      await tester.pumpWidget(
+        BrewManagerApp(
+          home: AppLayout(openCountStore: () async => CountStore(db)),
+        ),
+      );
+      await waitForDb(tester);
+      return menuId;
+    }
+
+    Future<void> openTab(WidgetTester tester, String label) async {
+      await tester.tap(find.text(label));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a tally shows the badge without leaving the app', (
+      tester,
+    ) async {
+      final menuId = await openApp(tester);
+      expect(badge, findsNothing);
+
+      await openTab(tester, 'Tally');
+      await tapKey(tester, 'tally_tile_$menuId');
+      await openTab(tester, 'Count');
+
+      expect(badge, findsOneWidget);
+    });
+
+    testWidgets('taking the tally back to 0 removes the badge', (tester) async {
+      final menuId = await openApp(tester);
+      await openTab(tester, 'Tally');
+      await tapKey(tester, 'tally_tile_$menuId');
+
+      await tapKey(tester, 'tally_minus_$menuId');
+      await openTab(tester, 'Count');
+
+      expect(badge, findsNothing);
+    });
+
+    testWidgets('counting the item removes the badge, the filter keeps it', (
+      tester,
+    ) async {
+      final menuId = await openApp(tester);
+      await openTab(tester, 'Tally');
+      await tapKey(tester, 'tally_tile_$menuId');
+      await openTab(tester, 'Count');
+
+      await tester.tap(find.text('Caramel syrup'));
+      await tester.pumpAndSettle();
+      expect(badge, findsOneWidget);
+      await tester.tap(find.byKey(const Key('sealed_plus')));
+      await waitForDb(tester);
+
+      expect(badge, findsNothing);
+      await tester.tap(find.byKey(const Key('filter_used')));
+      await tester.pumpAndSettle();
+      expect(find.text('No items used today'), findsNothing);
+    });
+
+    testWidgets('no expected numbers reach the barista side', (tester) async {
+      final menuId = await openApp(tester);
+      await openTab(tester, 'Tally');
+      await tapKey(tester, 'tally_tile_$menuId');
+      await openTab(tester, 'Count');
+
+      // 30 is the recipe amount
+      expect(find.textContaining('30'), findsNothing);
+    });
   });
 
   testWidgets('the app layout opens the tally of the draft day', (
