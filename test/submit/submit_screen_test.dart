@@ -11,6 +11,7 @@ import 'package:brewmanager/data/stock_item_store.dart';
 import 'package:brewmanager/layout/app_layout.dart';
 import 'package:brewmanager/logic/units.dart';
 import 'package:brewmanager/main.dart';
+import 'package:brewmanager/submit/submit_widgets.dart';
 
 import '../helpers/tablet_screen.dart';
 import '../helpers/test_database.dart';
@@ -77,7 +78,12 @@ void main() {
   Future<void> pickDay(WidgetTester tester, String day) async {
     await tester.tap(find.text('Change date'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text(day));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(DatePickerDialog),
+        matching: find.text(day),
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
@@ -114,7 +120,8 @@ void main() {
       expect(find.text('Opening count, not counted yet'), findsOneWidget);
       expect(find.text('No recipe yet'), findsOneWidget);
       expect(find.text('Soup'), findsOneWidget);
-      expect(find.text('Tally total: 2'), findsOneWidget);
+      expect(find.text('Tally total'), findsOneWidget);
+      expect(find.widgetWithText(StatCard, '2'), findsOneWidget);
 
       await tester.tap(find.text('Next'));
       await tester.pumpAndSettle();
@@ -134,9 +141,10 @@ void main() {
       await openApp(tester);
       await openSubmit(tester);
 
-      expect(find.textContaining('Fries pack: +3 pcs ·'), findsOneWidget);
-      expect(find.text('Fries pack: 2 packs expired'), findsOneWidget);
-      expect(find.text('Day note: power outage at 3pm'), findsOneWidget);
+      expect(find.text('+3 pcs'), findsOneWidget);
+      expect(find.text('2 packs expired'), findsOneWidget);
+      expect(find.text('Day note'), findsOneWidget);
+      expect(find.text('power outage at 3pm'), findsOneWidget);
     });
 
     testWidgets('back to count submits nothing', (tester) async {
@@ -308,7 +316,8 @@ void main() {
       }
 
       await openSubmit(tester);
-      expect(find.text('Tally total: 7'), findsOneWidget);
+      expect(find.text('Tally total'), findsOneWidget);
+      expect(find.widgetWithText(StatCard, '7'), findsOneWidget);
       expectNoExpected();
 
       await tester.tap(find.text('Next'));

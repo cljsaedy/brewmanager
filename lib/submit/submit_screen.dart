@@ -10,7 +10,7 @@ import '../logic/count_math.dart';
 import '../logic/formatting.dart';
 import '../logic/units.dart';
 import '../theme/app_theme.dart';
-import '../widgets/status_chip.dart';
+import 'submit_widgets.dart';
 
 // the 3 steps of a submit
 enum _Step { review, date, done }
@@ -186,7 +186,7 @@ class _SubmitScreenState extends State<SubmitScreen> {
       backgroundColor: AppColors.cream,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           child: review == null
               ? const Center(child: CircularProgressIndicator())
               : switch (_step) {
@@ -199,90 +199,123 @@ class _SubmitScreenState extends State<SubmitScreen> {
     );
   }
 
-  // step 1: the day's summary, warnings never stop the next step
-  Widget _reviewStep(DayReview review) {
+  // the header on top with the step's content filling the rest
+  Widget _frame({required SubmitHeader header, required Widget body}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'Review ${_longDate(_draftDate)}',
-          style: Theme.of(context).textTheme.titleLarge,
-        ),
+        header,
         const SizedBox(height: 12),
+        Expanded(child: body),
+      ],
+    );
+  }
+
+  // step 1: the numbers on top, the lists below, warnings never stop the next step
+  Widget _reviewStep(DayReview review) {
+    return _frame(
+      header: SubmitHeader(
+        title: 'Review the day',
+        subtitle: _longDate(_draftDate),
+        stepIndex: 0,
+        actions: [
+          OutlinedButton(onPressed: _close, child: const Text('Back to count')),
+          FilledButton(
+            onPressed: () => setState(() => _step = _Step.date),
+            child: const Text('Next'),
+          ),
+        ],
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _statRow(review),
+          const SizedBox(height: 12),
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: _eventsCard(review)),
+                const SizedBox(width: 12),
+                Expanded(child: _checkCard(review)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statRow(DayReview review) {
+    final toCheck =
+        review.doubleCheckItems.length +
+        review.openingItems.length +
+        review.noRecipeItems.length;
+
+    return Row(
+      children: [
         Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(child: _summaryCard(review)),
-              const SizedBox(width: 12),
-              Expanded(child: _notesCard(review)),
-            ],
+          child: StatCard(
+            label: 'Items changed',
+            value: '${review.itemsChanged}',
+            icon: Icons.edit_note,
           ),
         ),
-        const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            OutlinedButton(
-              onPressed: _close,
-              child: const Text('Back to count'),
-            ),
-            const SizedBox(width: 12),
-            FilledButton(
-              onPressed: () => setState(() => _step = _Step.date),
-              child: const Text('Next'),
-            ),
-          ],
+        const SizedBox(width: 12),
+        Expanded(
+          child: StatCard(
+            label: 'Tally total',
+            value: '${review.tallyTotal}',
+            icon: Icons.receipt_long_outlined,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: StatCard(
+            label: 'IN and OUT',
+            value: '${review.events.length}',
+            icon: Icons.swap_vert,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: StatCard(
+            label: 'To check',
+            value: '$toCheck',
+            icon: toCheck > 0
+                ? Icons.warning_amber_rounded
+                : Icons.check_circle_outline,
+            color: toCheck > 0 ? AppColors.warnText : AppColors.okText,
+            background: toCheck > 0 ? AppColors.warnBg : AppColors.okBg,
+          ),
         ),
       ],
     );
   }
 
-  Widget _card(List<Widget> children) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-        border: Border.all(color: AppColors.divider),
-      ),
-      // scrolls on its own so a long list never pushes the buttons away
-      child: ListView(padding: const EdgeInsets.all(16), children: children),
+  Widget _eventsCard(DayReview review) {
+    return SectionCard(
+      title: 'Restocks and finished',
+      children: [
+        if (review.events.isEmpty) const EmptyLine('No IN or OUT today'),
+        for (final event in review.events) _eventRow(event),
+      ],
     );
   }
 
-  Widget _heading(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Text(text, style: const TextStyle(fontWeight: FontWeight.w600)),
-    );
-  }
-
-  Widget _line(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Text(text),
-    );
-  }
-
-  Widget _summaryCard(DayReview review) {
-    return _card([
-      _heading('The day'),
-      _line('Items changed: ${review.itemsChanged}'),
-      _line('Tally total: ${review.tallyTotal}'),
-      const SizedBox(height: 12),
-      _heading('IN and OUT'),
-      if (review.events.isEmpty) _line('No IN or OUT today'),
-      for (final event in review.events) _line(_eventText(event)),
-    ]);
-  }
-
-  // like "Caramel syrup: +2 bottles · 2:15pm" or "Caramel syrup: Bottle finished · 4:30pm"
-  String _eventText(ReviewEvent event) {
+  // a restock is green, a finished container is brown
+  Widget _eventRow(ReviewEvent event) {
     final item = event.item;
-    final what = event.isRestock
-        ? '+${_restockText(item, event.qty)}'
-        : '${capitalized(item.containerName)} finished';
-    return '${item.name}: $what · ${formatTime(event.time)}';
+    return SubmitRow(
+      icon: event.isRestock ? Icons.add : Icons.check,
+      color: event.isRestock ? AppColors.okText : AppColors.espresso,
+      background: event.isRestock ? AppColors.okBg : AppColors.cream,
+      title: item.name,
+      detail: event.isRestock
+          ? '+${_restockText(item, event.qty)}'
+          : '${capitalized(item.containerName)} finished',
+      trailing: formatTime(event.time),
+    );
   }
 
   String _restockText(StockItem item, double qty) {
@@ -293,37 +326,47 @@ class _SubmitScreenState extends State<SubmitScreen> {
     return formatWithUnit(qty, item.baseUnit.name);
   }
 
-  Widget _notesCard(DayReview review) {
-    return _card([
-      _heading('Please check'),
-      if (!review.hasWarnings) _line('Nothing to check'),
-      ..._warning('Used today, not counted yet', review.doubleCheckItems),
-      ..._warning('Opening count, not counted yet', review.openingItems),
-      ..._warning('No recipe yet', review.noRecipeItems),
-      const SizedBox(height: 12),
-      _heading('Notes'),
-      if (review.notes.isEmpty && review.dayNote == null) _line('No notes'),
-      if (review.dayNote != null) _line('Day note: ${review.dayNote}'),
-      for (final note in review.notes) _line('${note.itemName}: ${note.note}'),
-    ]);
+  Widget _checkCard(DayReview review) {
+    final hasNotes = review.dayNote != null || review.notes.isNotEmpty;
+
+    return SectionCard(
+      title: 'Please check',
+      children: [
+        if (!review.hasWarnings)
+          const EmptyLine('Nothing to check', icon: Icons.check_circle_outline),
+        ..._warning('Used today, not counted yet', review.doubleCheckItems),
+        ..._warning('Opening count, not counted yet', review.openingItems),
+        ..._warning('No recipe yet', review.noRecipeItems),
+        const ListTitle('Notes'),
+        if (!hasNotes) const EmptyLine('No notes'),
+        if (review.dayNote != null) _noteRow('Day note', review.dayNote!),
+        for (final note in review.notes) _noteRow(note.itemName, note.note),
+      ],
+    );
   }
 
   // one warning with its names, nothing when the list is empty
   List<Widget> _warning(String title, List<String> names) {
     if (names.isEmpty) return const [];
     return [
-      Padding(
-        padding: const EdgeInsets.only(bottom: 4),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: StatusChip(label: title, tone: ChipTone.warn),
-        ),
-      ),
-      Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Text(names.join(', ')),
+      SubmitRow(
+        icon: Icons.warning_amber_rounded,
+        color: AppColors.warnText,
+        background: AppColors.warnBg,
+        title: title,
+        detail: names.join(', '),
       ),
     ];
+  }
+
+  Widget _noteRow(String title, String note) {
+    return SubmitRow(
+      icon: Icons.sticky_note_2_outlined,
+      color: AppColors.espresso,
+      background: AppColors.cream,
+      title: title,
+      detail: note,
+    );
   }
 
   // step 2: the date shown big, so the wrong day doesnt get submitted by accident
@@ -332,121 +375,172 @@ class _SubmitScreenState extends State<SubmitScreen> {
       draftDate: _chosenDate,
       today: widget.store.today,
     );
-    final skipped = _skipped;
+    final date = DateTime.parse(_chosenDate);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          child: Center(
-            child: SingleChildScrollView(
-              child: Column(
+    return _frame(
+      header: SubmitHeader(
+        title: 'Confirm the date',
+        subtitle: 'Submitting locks this day',
+        stepIndex: 1,
+        actions: [
+          OutlinedButton(
+            onPressed: _submitting
+                ? null
+                : () => setState(() => _step = _Step.review),
+            child: const Text('Back'),
+          ),
+          FilledButton(
+            onPressed: _submitting ? null : _submit,
+            child: const Text('Submit'),
+          ),
+        ],
+      ),
+      body: Center(
+        // scrolls in case a warning and the hint dont fit the short screen
+        child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: SubmitCard(
+              padding: 24,
+              child: Row(
                 children: [
-                  Text(
-                    'Submit count for ${_longDate(_chosenDate)}?',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineMedium,
+                  CalendarTile(
+                    month: DateFormat('MMM').format(date),
+                    day: DateFormat('d').format(date),
+                    weekday: DateFormat('EEEE').format(date),
                   ),
-                  if (warning != null) ...[
-                    const SizedBox(height: 12),
-                    StatusChip(label: warning, tone: ChipTone.warn),
-                  ],
-                  if (skipped.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      _skippedDaysOpen
-                          ? 'Covers ${_coversText(_draftDate, _chosenDate)}'
-                          : 'Closed: ${skipped.map(_shortDate).join(', ')}',
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  OutlinedButton.icon(
-                    onPressed: _canChangeDate ? _changeDate : null,
-                    icon: const Icon(Icons.calendar_today, size: 18),
-                    label: const Text('Change date'),
-                  ),
-                  if (!_canChangeDate) ...[
-                    const SizedBox(height: 6),
-                    const Text(
-                      'The date can only move forward, up to today.',
-                      style: TextStyle(color: AppColors.textMuted),
-                    ),
-                  ],
+                  const SizedBox(width: 24),
+                  Expanded(child: _dateDetails(warning)),
                 ],
               ),
             ),
           ),
         ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            OutlinedButton(
-              onPressed: _submitting
-                  ? null
-                  : () => setState(() => _step = _Step.review),
-              child: const Text('Back'),
-            ),
-            const SizedBox(width: 12),
-            FilledButton(
-              onPressed: _submitting ? null : _submit,
-              child: const Text('Submit'),
-            ),
-          ],
+      ),
+    );
+  }
+
+  Widget _dateDetails(String? warning) {
+    final skipped = _skipped;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'Submit count for ${_longDate(_chosenDate)}?',
+          style: const TextStyle(
+            fontSize: 26,
+            height: 1.2,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textMain,
+          ),
         ),
+        if (warning != null) ...[
+          const SizedBox(height: 12),
+          WarningBanner(warning),
+        ],
+        if (skipped.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Text(
+            _skippedDaysOpen
+                ? 'Covers ${_coversText(_draftDate, _chosenDate)}'
+                : 'Closed: ${skipped.map(_shortDate).join(', ')}',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ],
+        const SizedBox(height: 16),
+        OutlinedButton.icon(
+          onPressed: _canChangeDate ? _changeDate : null,
+          icon: const Icon(Icons.calendar_today, size: 18),
+          label: const Text('Change date'),
+        ),
+        if (!_canChangeDate) ...[
+          const SizedBox(height: 6),
+          Text(
+            'The date can only move forward, up to today.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
       ],
     );
   }
 
-  // step 3: done, with the restock list, the email status comes in feature 9
+  // step 3: done on the left, the restock list on the right, the email status comes in feature 9
   Widget _doneStep() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          child: Center(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  const Icon(
-                    Icons.check_circle_outline,
-                    size: 48,
-                    color: AppColors.okText,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Submitted ${_longDate(_chosenDate)}',
-                    style: Theme.of(context).textTheme.headlineMedium,
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Owner email comes in Feature 9.',
-                    style: TextStyle(color: AppColors.textMuted),
-                  ),
-                  const SizedBox(height: 16),
-                  if (_restockItems.isEmpty)
-                    const Text('No items need restocking')
-                  else ...[
-                    const StatusChip(
-                      label: 'Restock recommended',
-                      tone: ChipTone.warn,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(_restockItems.join(', '), textAlign: TextAlign.center),
-                  ],
-                ],
+    return _frame(
+      header: SubmitHeader(
+        title: 'Day submitted',
+        subtitle: _longDate(_chosenDate),
+        stepIndex: 2,
+        actions: [
+          FilledButton(
+            onPressed: _close,
+            child: const Text("Open next day's draft"),
+          ),
+        ],
+      ),
+      body: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: _doneCard()),
+          const SizedBox(width: 12),
+          Expanded(child: _restockCard()),
+        ],
+      ),
+    );
+  }
+
+  Widget _doneCard() {
+    final text = Theme.of(context).textTheme;
+
+    return SubmitCard(
+      child: Center(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const IconTile(
+                icon: Icons.check,
+                color: AppColors.okText,
+                background: AppColors.okBg,
+                size: 64,
               ),
-            ),
+              const SizedBox(height: 14),
+              Text(
+                'Submitted ${_longDate(_chosenDate)}',
+                textAlign: TextAlign.center,
+                style: text.headlineSmall,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Owner email comes in Feature 9.',
+                textAlign: TextAlign.center,
+                style: text.bodySmall,
+              ),
+            ],
           ),
         ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            FilledButton(
-              onPressed: _close,
-              child: const Text("Open next day's draft"),
-            ),
-          ],
-        ),
+      ),
+    );
+  }
+
+  Widget _restockCard() {
+    return SectionCard(
+      title: 'Restock recommended',
+      children: [
+        if (_restockItems.isEmpty)
+          const EmptyLine(
+            'No items need restocking',
+            icon: Icons.check_circle_outline,
+          ),
+        for (final name in _restockItems)
+          SubmitRow(
+            icon: Icons.shopping_basket_outlined,
+            color: AppColors.warnText,
+            background: AppColors.warnBg,
+            title: name,
+          ),
       ],
     );
   }
