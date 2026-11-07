@@ -13,6 +13,12 @@ import 'count_panel.dart';
 // badge on the row of an item on its opening count day (rule 3)
 const String openingCountBadge = 'Opening count: please count';
 
+// badge on the row of an item at or below its low-stock level, only a mark (rule 8)
+const String restockBadge = 'Restock recommended';
+
+// which rows the table shows, the used today filter comes in feature 5 since it needs the tally
+enum _CountFilter { all, restock }
+
 // the barista's logbook: one row per stock item, grouped by category
 // the app layout loads the draft and passes it here since the top bar needs the same date
 // tapping a row opens that item's panel on the right
@@ -39,8 +45,13 @@ class _CountTabState extends State<CountTab> {
   // the id and not the row, since the rows get replaced on every reload
   int? _selectedItemId;
 
+  _CountFilter _filter = _CountFilter.all;
+
   // width of the panel, the table gets the rest
   static const double _panelWidth = 340;
+
+  // below this height the keyboard is open, then the title and filters hide so the rows still fit
+  static const double _minHeightForHeader = 240;
 
   // how wide each column is compared to the others (flex), header and rows use the same ones
   static const int _nameFlex = 6;
@@ -89,26 +100,43 @@ class _CountTabState extends State<CountTab> {
     );
   }
 
+  // the rows the filter lets through
+  // an open panel stays open even if its row leaves the list here, it is found in all the rows
+  List<CountRow> _filtered(List<CountRow> rows) {
+    if (_filter == _CountFilter.all) return rows;
+    return rows.where((row) => row.restockRecommended).toList();
+  }
+
   Widget _tableCard(BuildContext context) {
     final rows = widget.draft?.rows;
 
-    return Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _header(context, rows),
-          const SizedBox(height: 4),
-          _columnTitles(),
-          // Expanded = the list gets all the height left in the card and scrolls inside it
-          Expanded(
-            child: rows == null
-                ? const Center(child: CircularProgressIndicator())
-                : rows.isEmpty
-                ? _emptyMessage(context)
-                : _table(rows),
+    // LayoutBuilder = tells how much height the card really gets right now
+    return LayoutBuilder(
+      builder: (context, size) {
+        return Card(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (size.maxHeight >= _minHeightForHeader) ...[
+                _header(context, rows),
+                _filters(),
+                const SizedBox(height: 4),
+              ],
+              _columnTitles(),
+              // Expanded = the list gets all the height left in the card and scrolls inside it
+              Expanded(
+                child: rows == null
+                    ? const Center(child: CircularProgressIndicator())
+                    : rows.isEmpty
+                    ? _emptyMessage(context)
+                    : _filtered(rows).isEmpty
+                    ? _noRestockMessage(context)
+                    : _table(_filtered(rows)),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -125,6 +153,32 @@ class _CountTabState extends State<CountTab> {
           Text('Logbook', style: text.headlineSmall),
           const SizedBox(height: 2),
           Text(count == 1 ? '1 item' : '$count items', style: text.bodySmall),
+        ],
+      ),
+    );
+  }
+
+  // the filter buttons, Wrap = they go to the next line if the table is narrow
+  Widget _filters() {
+    Widget chip(Key key, String label, _CountFilter filter) {
+      return ChoiceChip(
+        key: key,
+        label: Text(label),
+        selected: _filter == filter,
+        showCheckmark: false,
+        selectedColor: AppColors.cream,
+        onSelected: (_) => setState(() => _filter = filter),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 20, 12),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          chip(const Key('filter_all'), 'All', _CountFilter.all),
+          chip(const Key('filter_restock'), restockBadge, _CountFilter.restock),
         ],
       ),
     );
@@ -197,6 +251,16 @@ class _CountTabState extends State<CountTab> {
     );
   }
 
+  // shown when the restock filter is on and no item is low
+  Widget _noRestockMessage(BuildContext context) {
+    return Center(
+      child: Text(
+        'No items need restocking',
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+    );
+  }
+
   // the rows with a category title above each group
   // rows already come sorted by category, so a new title goes in whenever the category changes
   Widget _table(List<CountRow> rows) {
@@ -254,9 +318,25 @@ class _CountTabState extends State<CountTab> {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
-                    if (line.isOpening) ...const [
-                      SizedBox(height: 6),
-                      StatusChip(label: openingCountBadge, tone: ChipTone.warn),
+                    if (line.isOpening || row.restockRecommended) ...[
+                      const SizedBox(height: 6),
+                      // Wrap = badges go under each other when the column is narrow
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          if (line.isOpening)
+                            const StatusChip(
+                              label: openingCountBadge,
+                              tone: ChipTone.warn,
+                            ),
+                          if (row.restockRecommended)
+                            const StatusChip(
+                              label: restockBadge,
+                              tone: ChipTone.warn,
+                            ),
+                        ],
+                      ),
                     ],
                   ],
                 ),

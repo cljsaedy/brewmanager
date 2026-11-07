@@ -35,6 +35,21 @@ bool containerIsExact({required double level, required double? exactQty}) {
   return exactQty != null || level == levelNone;
 }
 
+// true when End is at or below the low-stock level (rule 8)
+// a level in containers is turned into base units first, like below 2 bottles of 2000 ml = 4000 ml
+// container size can be null for exact mode since it is not needed there
+bool isAtLowLevel({
+  required double end,
+  required LowMode lowMode,
+  required double lowValue,
+  required double? containerSize,
+}) {
+  final limit = lowMode == LowMode.containers
+      ? roundAmount(lowValue * containerSize!)
+      : lowValue;
+  return end <= limit;
+}
+
 // how many whole containers a restock is, restocks are saved in base units (rule 1)
 // like 4000 ml with 2000 ml bottles = 2
 int containersIn(double qty, double containerSize) {

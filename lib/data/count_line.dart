@@ -1,3 +1,4 @@
+import '../logic/count_math.dart';
 import 'stock_item.dart';
 
 // one row of the business_days table
@@ -124,6 +125,16 @@ class CountRow {
   final StockItem item;
   // today's restocks, oldest first
   final List<Restock> restocks;
+
+  // true when this row gets the restock recommended badge (rule 8)
+  bool get restockRecommended {
+    return isAtLowLevel(
+      end: line.endQty,
+      lowMode: item.lowMode,
+      lowValue: item.lowValue,
+      containerSize: item.containerSize,
+    );
+  }
 }
 
 // the draft day with all its rows, ordered by category then name

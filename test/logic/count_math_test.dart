@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:brewmanager/logic/count_math.dart';
+import 'package:brewmanager/logic/units.dart';
 
 void main() {
   group('containerEnd', () {
@@ -145,6 +146,38 @@ void main() {
         openedStillFromFinish(level: levelFull, exactQty: 300, sealedBefore: 1),
         isFalse,
       );
+    });
+  });
+
+  group('isAtLowLevel', () {
+    bool inContainers(double end) {
+      return isAtLowLevel(
+        end: end,
+        lowMode: LowMode.containers,
+        lowValue: 2,
+        containerSize: 2000,
+      );
+    }
+
+    bool exact(double end) {
+      return isAtLowLevel(
+        end: end,
+        lowMode: LowMode.exact,
+        lowValue: 500,
+        containerSize: null,
+      );
+    }
+
+    test('containers mode counts in containers', () {
+      expect(inContainers(3999), isTrue);
+      expect(inContainers(4000), isTrue);
+      expect(inContainers(4001), isFalse);
+    });
+
+    test('exact mode uses the base amount', () {
+      expect(exact(499), isTrue);
+      expect(exact(500), isTrue);
+      expect(exact(501), isFalse);
     });
   });
 

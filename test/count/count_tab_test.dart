@@ -7,6 +7,7 @@ import 'package:brewmanager/data/stock_item.dart';
 import 'package:brewmanager/logic/count_math.dart';
 import 'package:brewmanager/logic/units.dart';
 import 'package:brewmanager/theme/app_theme.dart';
+import 'package:brewmanager/widgets/status_chip.dart';
 
 import '../helpers/tablet_screen.dart';
 
@@ -78,7 +79,98 @@ Future<void> showTab(WidgetTester tester, DraftDay? draft) async {
   );
 }
 
+// the badge only, the filter button has the same words
+final Finder restockChip = find.widgetWithText(StatusChip, restockBadge);
+
 void main() {
+  testWidgets('with the keyboard open the title and filters hide', (
+    tester,
+  ) async {
+    // bigger than a real keyboard since this test has no top bar taking height
+    tester.view.viewInsets = const FakeViewPadding(bottom: 500);
+    addTearDown(tester.view.resetViewInsets);
+
+    await showTab(
+      tester,
+      draftOf([CountRow(line: line(end: 6), item: friesPack)]),
+    );
+
+    expect(find.text('Logbook'), findsNothing);
+    expect(find.byKey(const Key('filter_all')), findsNothing);
+    expect(find.text('End'), findsOneWidget);
+    expect(find.text('Fries pack'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  group('restock recommended', () {
+    Future<void> tapFilter(WidgetTester tester, String key) async {
+      await tester.tap(find.byKey(Key(key)));
+      await tester.pumpAndSettle();
+    }
+
+    // syrup is low at 1 bottle = 2000 ml, fries at 5 pcs
+    final DraftDay mixed = draftOf([
+      CountRow(line: line(end: 6), item: friesPack),
+      CountRow(line: line(end: 1000), item: syrup),
+    ]);
+
+    testWidgets('the badge shows at the level, not above it', (tester) async {
+      await showTab(
+        tester,
+        draftOf([
+          CountRow(line: line(end: 2000), item: syrup),
+          CountRow(line: line(end: 6), item: friesPack),
+        ]),
+      );
+      expect(restockChip, findsOneWidget);
+    });
+
+    testWidgets('a line can show both badges', (tester) async {
+      await showTab(
+        tester,
+        draftOf([CountRow(line: line(isOpening: true), item: friesPack)]),
+      );
+
+      expect(find.text(openingCountBadge), findsOneWidget);
+      expect(restockChip, findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the filter only shows low items', (tester) async {
+      await showTab(tester, mixed);
+      expect(find.text('Fries pack'), findsOneWidget);
+
+      await tapFilter(tester, 'filter_restock');
+
+      expect(find.text('Fries pack'), findsNothing);
+      expect(find.text('FOOD'), findsNothing);
+      expect(find.text('Caramel syrup'), findsOneWidget);
+      expect(find.text('SYRUPS'), findsOneWidget);
+      // the header still counts all the items
+      expect(find.text('2 items'), findsOneWidget);
+    });
+
+    testWidgets('All brings every row back', (tester) async {
+      await showTab(tester, mixed);
+      await tapFilter(tester, 'filter_restock');
+
+      await tapFilter(tester, 'filter_all');
+
+      expect(find.text('Fries pack'), findsOneWidget);
+    });
+
+    testWidgets('nothing low says so', (tester) async {
+      await showTab(
+        tester,
+        draftOf([CountRow(line: line(end: 6), item: friesPack)]),
+      );
+
+      await tapFilter(tester, 'filter_restock');
+
+      expect(find.text('No items need restocking'), findsOneWidget);
+    });
+  });
+
   testWidgets('shows a loading circle until the draft is ready', (
     tester,
   ) async {

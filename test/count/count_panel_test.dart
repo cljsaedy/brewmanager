@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:brewmanager/count/count_panel.dart';
+import 'package:brewmanager/count/count_tab.dart';
 import 'package:brewmanager/data/count_store.dart';
 import 'package:brewmanager/data/stock_item.dart';
 import 'package:brewmanager/data/stock_item_store.dart';
@@ -10,6 +11,7 @@ import 'package:brewmanager/layout/app_layout.dart';
 import 'package:brewmanager/logic/count_math.dart';
 import 'package:brewmanager/logic/units.dart';
 import 'package:brewmanager/main.dart';
+import 'package:brewmanager/widgets/status_chip.dart';
 
 import '../helpers/tablet_screen.dart';
 import '../helpers/test_database.dart';
@@ -587,6 +589,47 @@ void main() {
         expect(finishedShown(tester), '1');
       },
     );
+  });
+
+  group('the restock badge follows the panel', () {
+    final badge = find.widgetWithText(StatusChip, restockBadge);
+
+    testWidgets('a higher count takes it away', (tester) async {
+      await openPanel(tester, syrup);
+      expect(badge, findsOneWidget);
+
+      // 2 bottles is above the low level of 1
+      await tapVisible(tester, find.byKey(const Key('sealed_plus')));
+      await tapVisible(tester, find.byKey(const Key('sealed_plus')));
+
+      expect(badge, findsNothing);
+    });
+
+    testWidgets('a new low-stock level changes it right away', (tester) async {
+      await openPanel(tester, syrup);
+      await tapVisible(tester, find.byKey(const Key('sealed_plus')));
+      await tapVisible(tester, find.byKey(const Key('sealed_plus')));
+      expect(badge, findsNothing);
+
+      await tester.enterText(find.byKey(const Key('low_field')), '3');
+      await waitForDb(tester);
+
+      expect(badge, findsOneWidget);
+    });
+
+    testWidgets('the panel stays open when its row leaves the filter', (
+      tester,
+    ) async {
+      await openPanel(tester, syrup);
+      await tester.tap(find.byKey(const Key('filter_restock')));
+      await tester.pumpAndSettle();
+
+      await tapVisible(tester, find.byKey(const Key('sealed_plus')));
+      await tapVisible(tester, find.byKey(const Key('sealed_plus')));
+
+      expect(find.text('No items need restocking'), findsOneWidget);
+      expect(find.byType(CountPanel), findsOneWidget);
+    });
   });
 
   testWidgets('tapping another row shows that item', (tester) async {
