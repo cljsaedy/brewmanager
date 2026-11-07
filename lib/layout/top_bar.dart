@@ -18,7 +18,7 @@ class TopBar extends StatelessWidget {
   final DateTime? businessDate;
   // false = Draft, true = Submitted
   final bool isSubmitted;
-  // button actions, null makes the button greyed out (not built yet)
+  // button actions, null makes the button greyed out while the day is still loading
   final VoidCallback? onDayNote;
   final VoidCallback? onSubmit;
 

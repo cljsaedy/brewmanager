@@ -8,12 +8,174 @@ import '../logic/usage_math.dart';
 import 'count_line.dart';
 import 'stock_item.dart';
 
+// one IN or OUT event for the review
+class ReviewEvent {
+  const ReviewEvent({
+    required this.item,
+    required this.isRestock,
+    required this.qty,
+    required this.time,
+  });
+
+  final StockItem item;
+  // true = a restock, false = a finished container
+  final bool isRestock;
+  // base units for a restock, 1 for a finished container
+  final double qty;
+  // on the tablet's clock
+  final DateTime time;
+}
+
+// one item note for the review
+class ReviewNote {
+  const ReviewNote({required this.itemName, required this.note});
+
+  final String itemName;
+  final String note;
+}
+
+// what the review step shows before a submit, no expected numbers in here
+class DayReview {
+  const DayReview({
+    required this.itemsChanged,
+    required this.tallyTotal,
+    required this.events,
+    required this.notes,
+    required this.dayNote,
+    required this.doubleCheckItems,
+    required this.openingItems,
+    required this.noRecipeItems,
+  });
+
+  // items counted, restocked or finished today
+  final int itemsChanged;
+  // how many menu items were tallied today
+  final int tallyTotal;
+  // all of the day's IN and OUT events, oldest first
+  final List<ReviewEvent> events;
+  final List<ReviewNote> notes;
+  final String? dayNote;
+
+  // the 3 warnings, they never stop the submit
+  // used today but not counted yet
+  final List<String> doubleCheckItems;
+  // opening count items not counted yet
+  final List<String> openingItems;
+  // tallied menu items with no recipe yet
+  final List<String> noRecipeItems;
+
+  bool get hasWarnings =>
+      doubleCheckItems.isNotEmpty ||
+      openingItems.isNotEmpty ||
+      noRecipeItems.isNotEmpty;
+}
+
 // locks a day and saves its numbers (rule 4 and rule 5)
 class SubmitStore {
   SubmitStore(this._db, {Clock clock = utcNow}) : _clock = clock;
 
   final Database _db;
   final Clock _clock;
+
+  // gets the review of a draft day, draft = the day fresh from loadDraft
+  Future<DayReview> review(DraftDay draft) async {
+    final dayId = draft.day.id;
+    final rows = draft.rows;
+    final items = {for (final row in rows) row.item.id: row.item};
+
+    // id as the 2nd sort so 2 events in the same moment stay in the order they were added
+    final eventRows = await _db.query(
+      'stock_events',
+      where: 'day_id = ?',
+      whereArgs: [dayId],
+      orderBy: 'created_at, id',
+    );
+    final events = <ReviewEvent>[];
+    for (final row in eventRows) {
+      // an item archived during the day is hidden, so it has no row here
+      final item = items[row['stock_item_id']];
+      if (item == null) continue;
+      events.add(
+        ReviewEvent(
+          item: item,
+          isRestock: row['kind'] == 'in',
+          qty: (row['qty'] as num).toDouble(),
+          time: DateTime.parse(row['created_at'] as String).toLocal(),
+        ),
+      );
+    }
+
+    final tallyRows = await _db.rawQuery(
+      'SELECT COALESCE(SUM(qty), 0) AS total FROM tally_lines WHERE day_id = ?',
+      [dayId],
+    );
+
+    return DayReview(
+      itemsChanged: rows
+          .where(
+            (row) =>
+                row.line.touched || row.line.inQty > 0 || row.line.outCount > 0,
+          )
+          .length,
+      tallyTotal: tallyRows.first['total'] as int,
+      events: events,
+      notes: [
+        for (final row in rows)
+          if (row.line.note != null)
+            ReviewNote(itemName: row.item.name, note: row.line.note!),
+      ],
+      dayNote: draft.day.dayNote,
+      doubleCheckItems: [
+        for (final row in rows)
+          if (row.needsDoubleCheck) row.item.name,
+      ],
+      openingItems: [
+        for (final row in rows)
+          if (row.line.isOpening && !row.line.touched) row.item.name,
+      ],
+      noRecipeItems: await _noRecipeItems(dayId),
+    );
+  }
+
+  // tallied menu items with no active recipe line
+  // no_stock items are left out, the owner said they have no recipe to compare (rule 6)
+  Future<List<String>> _noRecipeItems(int dayId) async {
+    final rows = await _db.rawQuery(
+      '''
+      SELECT menu_items.name
+      FROM tally_lines
+      JOIN menu_items ON menu_items.id = tally_lines.menu_item_id
+      WHERE tally_lines.day_id = ?
+        AND tally_lines.qty > 0
+        AND menu_items.no_stock = 0
+        AND NOT EXISTS (
+          SELECT 1 FROM recipe_lines
+          WHERE recipe_lines.menu_item_id = menu_items.id
+            AND recipe_lines.is_archived = 0
+        )
+      ORDER BY menu_items.name COLLATE NOCASE
+      ''',
+      [dayId],
+    );
+    return [for (final row in rows) row['name'] as String];
+  }
+
+  // the names of a submitted day's restock recommended items, for the submitted screen
+  // only names are read, the expected numbers in day_results stay off the barista side
+  Future<List<String>> restockItems(int dayId) async {
+    final rows = await _db.rawQuery(
+      '''
+      SELECT stock_items.name
+      FROM day_results
+      JOIN stock_items ON stock_items.id = day_results.stock_item_id
+      WHERE day_results.day_id = ? AND day_results.restock_flag = 1
+      ORDER BY stock_items.category COLLATE NOCASE,
+               stock_items.name COLLATE NOCASE
+      ''',
+      [dayId],
+    );
+    return [for (final row in rows) row['name'] as String];
+  }
 
   // submits a draft day, gives back false if it was not a draft anymore
   // date = the date the barista confirmed, it can only be the draft's date or later

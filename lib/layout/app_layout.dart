@@ -7,8 +7,10 @@ import '../data/database_helper.dart';
 import '../data/owner_pin_store.dart';
 import '../owner/create_pin_screen.dart';
 import '../owner/enter_pin_screen.dart';
+import '../submit/submit_screen.dart';
 import '../tally/tally_tab.dart';
 import '../widgets/placeholder_tab.dart';
+import 'day_note_dialog.dart';
 import 'side_rail.dart';
 import 'top_bar.dart';
 
@@ -140,8 +142,45 @@ class _AppLayoutState extends State<AppLayout> with RouteAware {
     }
   }
 
+  // day note tapped: show the box, save what was typed unless it was cancelled
+  Future<void> _editDayNote() async {
+    final draft = _draft;
+    final store = _countStore;
+    if (draft == null || store == null) return;
+
+    final text = await showDialog<String>(
+      context: context,
+      builder: (_) => DayNoteDialog(note: draft.day.dayNote),
+    );
+    if (text == null) return;
+
+    await store.saveDayNote(draft.day.id, text);
+    await _loadDraft();
+  }
+
+  // true while the submit screen is open, stops a double tap opening it twice
+  bool _openingSubmit = false;
+
+  // submit tapped: open the submit steps
+  // didPopNext above loads the next draft when this screen closes
+  Future<void> _openSubmit() async {
+    final store = _countStore;
+    if (_openingSubmit || store == null) return;
+    _openingSubmit = true;
+
+    try {
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => SubmitScreen(store: store)));
+    } finally {
+      _openingSubmit = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isReady = _draft != null;
+
     return Scaffold(
       body: SafeArea(
         child: Row(
@@ -162,8 +201,13 @@ class _AppLayoutState extends State<AppLayout> with RouteAware {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // buttons have no action yet so they show greyed out until feature 7
-                  TopBar(businessDate: _draft?.day.date, isSubmitted: false),
+                  // always a draft here, a submitted day stays on the submit screen until the next draft opens
+                  TopBar(
+                    businessDate: _draft?.day.date,
+                    isSubmitted: false,
+                    onDayNote: isReady ? _editDayNote : null,
+                    onSubmit: isReady ? _openSubmit : null,
+                  ),
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(0, 12, 12, 12),

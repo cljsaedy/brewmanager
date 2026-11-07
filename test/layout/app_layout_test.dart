@@ -137,7 +137,7 @@ void main() {
     expect(find.byType(CountTab), findsNothing);
   });
 
-  testWidgets('Submit and Day Note are greyed out for now', (tester) async {
+  testWidgets('Submit and Day Note are greyed out while the day loads', (tester) async {
     useTabletScreen(tester);
     await tester.pumpWidget(const BrewManagerApp(home: loadingLayout));
 

@@ -462,6 +462,102 @@ void main() {
     });
   });
 
+  group('review', () {
+    test('counts what changed and lists events and notes', () async {
+      await openingDay();
+      final dayId = (await draft()).day.id;
+      await counts.addRestock(rowOf(await draft(), syrupId), 2000);
+      await finishSyrup();
+      await countFries(5);
+      await counts.saveNote(rowOf(await draft(), friesId).line.id, 'dropped 1');
+      await counts.saveDayNote(dayId, 'power outage');
+      await tally(friesMenuId, 3);
+
+      final review = await submits.review(await draft());
+
+      expect(review.itemsChanged, 2);
+      expect(review.tallyTotal, 3);
+      expect(review.events.map((event) => event.isRestock), [true, false]);
+      expect(review.events.first.qty, 2000);
+      expect(review.notes.single.itemName, 'Fries pack');
+      expect(review.notes.single.note, 'dropped 1');
+      expect(review.dayNote, 'power outage');
+      expect(review.hasWarnings, isFalse);
+    });
+
+    test('warns about used items not counted yet', () async {
+      await openingDay();
+      await tally(latteId, 1);
+
+      final review = await submits.review(await draft());
+
+      expect(review.doubleCheckItems, ['Caramel syrup']);
+    });
+
+    test('warns about opening counts not counted yet', () async {
+      await countFries(8);
+
+      final review = await submits.review(await draft());
+
+      expect(review.openingItems, ['Caramel syrup']);
+    });
+
+    test('warns about tallied items with no recipe', () async {
+      final soupId = await menu.add(
+        const MenuItem(name: 'Soup', category: 'Food'),
+      );
+      await tally(soupId, 1);
+
+      final review = await submits.review(await draft());
+
+      expect(review.noRecipeItems, ['Soup']);
+    });
+
+    test('not compared items never show as no recipe', () async {
+      final waffleId = await menu.add(
+        const MenuItem(name: 'Waffle', category: 'Food', noStock: true),
+      );
+      await tally(waffleId, 1);
+
+      final review = await submits.review(await draft());
+
+      expect(review.noRecipeItems, isEmpty);
+    });
+
+    test('a tally taken back to 0 is no warning', () async {
+      final soupId = await menu.add(
+        const MenuItem(name: 'Soup', category: 'Food'),
+      );
+      await tally(soupId, 1);
+      await counts.tally.remove((await draft()).day.id, soupId);
+
+      final review = await submits.review(await draft());
+
+      expect(review.noRecipeItems, isEmpty);
+      expect(review.tallyTotal, 0);
+    });
+  });
+
+  test('restock items are the names flagged that day', () async {
+    await countFries(3);
+    await countSyrup(4);
+    final dayId = (await draft()).day.id;
+
+    await submitDraft();
+
+    expect(await submits.restockItems(dayId), ['Fries pack']);
+  });
+
+  test('a day note saves trimmed and clears when empty', () async {
+    final dayId = (await draft()).day.id;
+
+    await counts.saveDayNote(dayId, '  power outage  ');
+    expect((await draft()).day.dayNote, 'power outage');
+
+    await counts.saveDayNote(dayId, '   ');
+    expect((await draft()).day.dayNote, isNull);
+  });
+
   group('container checks', () {
     test('no check when nothing was finished', () async {
       await openingDay();

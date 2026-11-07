@@ -8,6 +8,7 @@ import '../logic/count_math.dart';
 import '../logic/units.dart';
 import 'count_line.dart';
 import 'stock_item.dart';
+import 'submit_store.dart';
 import 'tally_store.dart';
 
 // the draft day and its count lines (rule 3 and rule 5)
@@ -19,6 +20,12 @@ class CountStore {
 
   // the tally of the same days, it uses this same db
   TallyStore get tally => TallyStore(_db);
+
+  // the submit of the same days, it uses this same db and clock
+  SubmitStore get submits => SubmitStore(_db, clock: _clock);
+
+  // today's date on the tablet
+  String get today => dateText(_clock().toLocal());
 
   // gets the draft day ready and reads it, the count tab calls this every time it loads
   // transaction = the new day and all its lines get saved together or not at all
@@ -87,6 +94,17 @@ class CountStore {
       {'note': clean.isEmpty ? null : clean},
       where: 'id = ?',
       whereArgs: [lineId],
+    );
+  }
+
+  // saves the day note, an empty box is saved as null (rule 9)
+  Future<void> saveDayNote(int dayId, String note) async {
+    final clean = note.trim();
+    await _db.update(
+      'business_days',
+      {'day_note': clean.isEmpty ? null : clean},
+      where: 'id = ?',
+      whereArgs: [dayId],
     );
   }
 

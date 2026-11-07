@@ -7,11 +7,14 @@ class BusinessDay {
     required this.id,
     required this.businessDate,
     required this.status,
+    this.dayNote,
   });
 
   final int id;
   // YYYY-MM-DD text, the date the day is counted for, not always today (rule 5)
   final String businessDate;
+  // the one optional note about the whole day (rule 9)
+  final String? dayNote;
   // draft, submitted or closed
   final String status;
 
@@ -23,6 +26,7 @@ class BusinessDay {
       id: row['id'] as int,
       businessDate: row['business_date'] as String,
       status: row['status'] as String,
+      dayNote: row['day_note'] as String?,
     );
   }
 }
