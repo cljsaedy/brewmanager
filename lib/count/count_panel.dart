@@ -19,7 +19,7 @@ const Map<String, double> _levelButtons = {
 };
 
 // the right side panel for the selected logbook row, everything here autosaves (rule 4)
-// the IN and OUT parts come in the next steps
+// the OUT part comes in the next step
 class CountPanel extends StatefulWidget {
   const CountPanel({
     super.key,
@@ -50,8 +50,18 @@ class _CountPanelState extends State<CountPanel> {
   late final TextEditingController _numberBox;
   late final TextEditingController _noteBox;
   late final TextEditingController _lowBox;
+  late final TextEditingController _inBox;
+
+  // restocks being removed right now, they leave the list at once so a double tap cant hit them again
+  final Set<int> _removing = {};
 
   bool get _isContainer => widget.row.item.countType == CountType.container;
+
+  // the whole number typed in the restock box, null if it is empty or 0
+  int? get _inAmount {
+    final amount = int.tryParse(_inBox.text);
+    return amount == null || amount <= 0 ? null : amount;
+  }
 
   @override
   void initState() {
@@ -70,6 +80,7 @@ class _CountPanelState extends State<CountPanel> {
     _lowBox = TextEditingController(
       text: plainNumber(widget.row.item.lowValue),
     );
+    _inBox = TextEditingController();
   }
 
   // text boxes hold memory so they have to be closed when the panel goes away
@@ -79,6 +90,7 @@ class _CountPanelState extends State<CountPanel> {
     _numberBox.dispose();
     _noteBox.dispose();
     _lowBox.dispose();
+    _inBox.dispose();
     super.dispose();
   }
 
@@ -140,6 +152,65 @@ class _CountPanelState extends State<CountPanel> {
 
     await widget.store.saveLowValue(widget.row.item.id!, value);
     widget.onChanged();
+  }
+
+  // adds the typed restock, the box takes containers but the db keeps base units (rule 1)
+  // sealed changes here right away too, so a fast tap on + right after builds on the new number
+  Future<void> _addRestock() async {
+    final amount = _inAmount;
+    if (amount == null) return;
+
+    // cleared before saving so a double tap finds an empty box and adds nothing
+    _inBox.clear();
+    final item = widget.row.item;
+    final qty = _isContainer
+        ? roundAmount(amount * item.containerSize!)
+        : amount.toDouble();
+    setState(() {
+      if (_isContainer) _sealed += amount;
+    });
+
+    final saved = await widget.store.addRestock(widget.row, qty);
+    _afterRestock(saved);
+  }
+
+  // takes the restock back out, same idea as adding one
+  Future<void> _removeRestock(Restock restock) async {
+    if (!_removing.add(restock.id)) return;
+
+    setState(() {
+      if (_isContainer) {
+        final containers = containersIn(
+          restock.qty,
+          widget.row.item.containerSize!,
+        );
+        _sealed = sealedAfterRemove(_sealed, containers);
+      }
+    });
+
+    final saved = await widget.store.removeRestock(widget.row, restock);
+    _afterRestock(saved);
+  }
+
+  // the number box shows End so it has to follow the restock
+  // mounted = the panel could have been closed while saving, then the box is gone
+  void _afterRestock(CountLine saved) {
+    if (mounted && !_isContainer) {
+      _numberBox.text = plainNumber(saved.endQty);
+    }
+    widget.onChanged();
+  }
+
+  // one restock in the list, like "+2 bottles · 2:15pm"
+  String _restockText(Restock restock) {
+    final item = widget.row.item;
+    final amount = _isContainer
+        ? formatContainers(
+            restock.qty / item.containerSize!,
+            item.containerName,
+          )
+        : formatWithUnit(restock.qty, item.baseUnit.name);
+    return '+$amount · ${formatTime(restock.time)}';
   }
 
   // the End under the title, always with the base amount (rule 1)
@@ -207,6 +278,8 @@ class _CountPanelState extends State<CountPanel> {
                     _openedPart(context),
                   ] else
                     _numberField(),
+                  const SizedBox(height: 18),
+                  _inPart(context),
                   const SizedBox(height: 18),
                   _noteField(),
                   const SizedBox(height: 14),
@@ -307,6 +380,62 @@ class _CountPanelState extends State<CountPanel> {
         labelText: 'Number',
         suffixText: widget.row.item.baseUnit.name,
       ),
+    );
+  }
+
+  // restock box and today's restocks, it can be added to several times a day (rule 3)
+  // whole numbers only since restocks arrive sealed, so no half bottles here
+  Widget _inPart(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final item = widget.row.item;
+    final restocks = widget.row.restocks.where(
+      (restock) => !_removing.contains(restock.id),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('In', style: text.titleSmall),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                key: const Key('in_field'),
+                controller: _inBox,
+                // only redraws so the Add button turns on and off
+                onChanged: (_) => setState(() {}),
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: InputDecoration(
+                  labelText: 'Add restock',
+                  suffixText: _isContainer
+                      ? pluralOf(item.containerName)
+                      : item.baseUnit.name,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              key: const Key('in_add'),
+              onPressed: _inAmount == null ? null : _addRestock,
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+        for (final restock in restocks)
+          Row(
+            children: [
+              Expanded(child: Text(_restockText(restock))),
+              IconButton(
+                key: ValueKey('in_remove_${restock.id}'),
+                onPressed: () => _removeRestock(restock),
+                icon: const Icon(Icons.close, size: 18),
+                tooltip: 'Remove restock',
+              ),
+            ],
+          ),
+      ],
     );
   }
 

@@ -29,6 +29,11 @@ String pluralOf(String word) {
   return '${word}s';
 }
 
+// a time on the tablet's clock, small letters, like "2:15pm"
+final DateFormat _timeFormat = DateFormat('h:mma');
+
+String formatTime(DateTime time) => _timeFormat.format(time).toLowerCase();
+
 // number for a text box without commas or rounding, so saving again doesnt change it
 // like 2000.0 -> "2000", 29.5735 -> "29.5735"
 String plainNumber(double value) {

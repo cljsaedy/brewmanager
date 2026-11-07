@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'units.dart';
 
 // the math of one count (rule 2), no db and no screens here so it is easy to test
@@ -31,6 +33,18 @@ double containerEnd({
 // this gets saved with every End since the next day's Start inherits it
 bool containerIsExact({required double level, required double? exactQty}) {
   return exactQty != null || level == levelNone;
+}
+
+// how many whole containers a restock is, restocks are saved in base units (rule 1)
+// like 4000 ml with 2000 ml bottles = 2
+int containersIn(double qty, double containerSize) {
+  return (qty / containerSize).round();
+}
+
+// sealed after a restock is removed, it stops at 0
+// the barista could have opened those containers already, so there may be fewer left than the restock added
+int sealedAfterRemove(int sealed, int containers) {
+  return max(0, sealed - containers);
 }
 
 // how much of an item was used in one day, in base units (rule 7)

@@ -234,7 +234,14 @@ void main() {
   testWidgets('the low-stock level shows its mode and saves', (tester) async {
     await openPanel(tester, syrup);
 
-    expect(find.text('bottles'), findsOneWidget);
+    // the restock box says bottles too, so only look inside this box
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('low_field')),
+        matching: find.text('bottles'),
+      ),
+      findsOneWidget,
+    );
     await tester.enterText(find.byKey(const Key('low_field')), '3');
     await waitForDb(tester);
 
@@ -257,6 +264,130 @@ void main() {
     expect(sealedShown(tester), '1');
     expect(find.text('350'), findsOneWidget);
     expect(find.text('hello'), findsOneWidget);
+  });
+
+  group('restocks', () {
+    // types the amount and taps Add
+    Future<void> addRestock(WidgetTester tester, String amount) async {
+      await tester.enterText(find.byKey(const Key('in_field')), amount);
+      await tester.pumpAndSettle();
+      await tapVisible(tester, find.byKey(const Key('in_add')));
+    }
+
+    bool addIsOn(WidgetTester tester) {
+      final add = tester.widget<FilledButton>(find.byKey(const Key('in_add')));
+      return add.onPressed != null;
+    }
+
+    testWidgets('a container restock adds to sealed and shows in the list', (
+      tester,
+    ) async {
+      await openPanel(tester, syrup);
+
+      await addRestock(tester, '2');
+
+      expect(sealedShown(tester), '2');
+      expect(find.textContaining('+2 bottles · '), findsOneWidget);
+      final line = await savedLine(tester);
+      expect(line['in_qty'], 4000);
+      expect(line['end_qty'], 4000);
+      expect(line['touched'], 0);
+    });
+
+    testWidgets('the unit next to the box follows the item', (tester) async {
+      await openPanel(tester, syrup);
+      await tester.ensureVisible(find.byKey(const Key('in_field')));
+      await tester.pumpAndSettle();
+
+      // the low-stock box says bottles too
+      expect(find.text('bottles'), findsNWidgets(2));
+    });
+
+    testWidgets('a number restock updates the number box', (tester) async {
+      await openPanel(tester, friesPack);
+      await tester.enterText(find.byKey(const Key('number_field')), '3');
+      await waitForDb(tester);
+
+      await addRestock(tester, '5');
+
+      final box = tester.widget<TextField>(
+        find.byKey(const Key('number_field')),
+      );
+      expect(box.controller!.text, '8');
+      expect(find.textContaining('+5 pcs · '), findsOneWidget);
+      expect(find.text('End: 8 pcs'), findsOneWidget);
+    });
+
+    testWidgets('× takes the restock back out', (tester) async {
+      await openPanel(tester, syrup);
+      await addRestock(tester, '2');
+
+      await tapVisible(tester, find.byTooltip('Remove restock'));
+
+      expect(sealedShown(tester), '0');
+      expect(find.textContaining('+2 bottles'), findsNothing);
+      expect((await savedLine(tester))['in_qty'], 0);
+    });
+
+    testWidgets('a double tap on Add only adds once', (tester) async {
+      await openPanel(tester, syrup);
+      await tester.enterText(find.byKey(const Key('in_field')), '1');
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('in_add')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('in_add')));
+      await tester.tap(find.byKey(const Key('in_add')), warnIfMissed: false);
+      await waitForDb(tester);
+
+      expect(sealedShown(tester), '1');
+      expect((await savedLine(tester))['in_qty'], 2000);
+    });
+
+    testWidgets('a + right after a restock keeps both', (tester) async {
+      await openPanel(tester, syrup);
+      await tester.enterText(find.byKey(const Key('in_field')), '2');
+      await tester.pumpAndSettle();
+
+      // calls both buttons right after each other, so the restock is not saved yet
+      // they are too far apart to be on screen together, so no real taps here
+      tester.widget<FilledButton>(find.byKey(const Key('in_add'))).onPressed!();
+      await tester.pump();
+      tester
+          .widget<IconButton>(find.byKey(const Key('sealed_plus')))
+          .onPressed!();
+      await waitForDb(tester);
+
+      expect(sealedShown(tester), '3');
+      expect((await savedLine(tester))['sealed'], 3);
+    });
+
+    testWidgets('Add is off for an empty box or 0', (tester) async {
+      await openPanel(tester, syrup);
+      expect(addIsOn(tester), isFalse);
+
+      await tester.enterText(find.byKey(const Key('in_field')), '0');
+      await tester.pumpAndSettle();
+      expect(addIsOn(tester), isFalse);
+
+      await tester.enterText(find.byKey(const Key('in_field')), '1');
+      await tester.pumpAndSettle();
+      expect(addIsOn(tester), isTrue);
+    });
+
+    testWidgets('restocks are still there when the panel opens again', (
+      tester,
+    ) async {
+      await openPanel(tester, syrup);
+      await addRestock(tester, '1');
+
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Caramel syrup'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('+1 bottle · '), findsOneWidget);
+    });
   });
 
   testWidgets('tapping another row shows that item', (tester) async {

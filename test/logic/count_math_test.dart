@@ -49,6 +49,19 @@ void main() {
     });
   });
 
+  group('restock math', () {
+    test('containersIn gives whole containers', () {
+      expect(containersIn(4000, 2000), 2);
+      // a size with decimals doesnt divide back perfectly
+      expect(containersIn(99.9, 33.3), 3);
+    });
+
+    test('sealedAfterRemove stops at 0', () {
+      expect(sealedAfterRemove(3, 2), 1);
+      expect(sealedAfterRemove(1, 2), 0);
+    });
+  });
+
   group('amountUsed', () {
     test('start plus in minus end', () {
       expect(amountUsed(start: 8, inQty: 0, end: 6), 2);

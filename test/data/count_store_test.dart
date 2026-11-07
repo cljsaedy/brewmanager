@@ -450,6 +450,168 @@ void main() {
     });
   });
 
+  group('restocks', () {
+    CountRow rowOf(DraftDay draft, String name) {
+      return draft.rows.firstWhere((row) => row.item.name == name);
+    }
+
+    test('a container restock adds to sealed, In and End', () async {
+      await stock.add(syrup());
+      final row = rowOf(await store.loadDraft(), 'Caramel syrup');
+
+      await store.addRestock(row, 4000);
+
+      final line = lineOf(await store.loadDraft(), 'Caramel syrup');
+      expect(line.sealed, 2);
+      expect(line.inQty, 4000);
+      expect(line.endQty, 4000);
+    });
+
+    test('a number restock adds to the number', () async {
+      await stock.add(friesPack);
+      final row = rowOf(await store.loadDraft(), 'Fries pack');
+      await store.saveNumberCount(row.line.id, 3);
+
+      final saved = await store.addRestock(row, 5);
+
+      expect(saved.endQty, 8);
+      expect(saved.inQty, 5);
+      expect(saved.endIsExact, isTrue);
+    });
+
+    test('a restock keeps the opened part and stays untouched', () async {
+      await stock.add(syrup());
+      final row = rowOf(await store.loadDraft(), 'Caramel syrup');
+      await store.addRestock(row, 2000);
+      var line = lineOf(await store.loadDraft(), 'Caramel syrup');
+      expect(line.touched, isFalse);
+
+      await store.saveContainerCount(
+        rowOf(await store.loadDraft(), 'Caramel syrup'),
+        sealed: 1,
+        level: level50,
+        exactQty: null,
+      );
+      await store.addRestock(row, 2000);
+
+      line = lineOf(await store.loadDraft(), 'Caramel syrup');
+      expect(line.sealed, 2);
+      expect(line.level, level50);
+      expect(line.endQty, 5000);
+      expect(line.endIsExact, isFalse);
+    });
+
+    test('each restock is its own event with its time, oldest first', () async {
+      await stock.add(syrup());
+      final row = rowOf(await store.loadDraft(), 'Caramel syrup');
+
+      await store.addRestock(row, 2000);
+      now = now.add(const Duration(hours: 2));
+      await store.addRestock(row, 4000);
+
+      final restocks = rowOf(await store.loadDraft(), 'Caramel syrup').restocks;
+      expect(restocks.map((restock) => restock.qty), [2000, 4000]);
+      expect(restocks.last.time, now.toLocal());
+      expect(lineOf(await store.loadDraft(), 'Caramel syrup').inQty, 6000);
+    });
+
+    test('restocks stay with their own item', () async {
+      await stock.add(syrup());
+      await stock.add(friesPack);
+      final draft = await store.loadDraft();
+
+      await store.addRestock(rowOf(draft, 'Fries pack'), 5);
+
+      final after = await store.loadDraft();
+      expect(rowOf(after, 'Caramel syrup').restocks, isEmpty);
+      expect(rowOf(after, 'Fries pack').restocks, hasLength(1));
+    });
+
+    test('removing a restock reverses it', () async {
+      await stock.add(syrup());
+      final row = rowOf(await store.loadDraft(), 'Caramel syrup');
+      await store.addRestock(row, 2000);
+      await store.addRestock(row, 4000);
+
+      final first = rowOf(
+        await store.loadDraft(),
+        'Caramel syrup',
+      ).restocks.first;
+      await store.removeRestock(row, first);
+
+      final after = rowOf(await store.loadDraft(), 'Caramel syrup');
+      expect(after.restocks.single.qty, 4000);
+      expect(after.line.sealed, 2);
+      expect(after.line.inQty, 4000);
+      expect(after.line.endQty, 4000);
+    });
+
+    test('removing a number restock takes it off the number', () async {
+      await stock.add(friesPack);
+      final row = rowOf(await store.loadDraft(), 'Fries pack');
+      await store.saveNumberCount(row.line.id, 3);
+      await store.addRestock(row, 5);
+
+      final restock = rowOf(
+        await store.loadDraft(),
+        'Fries pack',
+      ).restocks.single;
+      final saved = await store.removeRestock(row, restock);
+
+      expect(saved.endQty, 3);
+      expect(saved.inQty, 0);
+    });
+
+    test('removing stops at 0 if the stock was already used', () async {
+      await stock.add(syrup());
+      await stock.add(friesPack);
+      final draft = await store.loadDraft();
+      await store.addRestock(rowOf(draft, 'Caramel syrup'), 4000);
+      await store.addRestock(rowOf(draft, 'Fries pack'), 5);
+
+      var after = await store.loadDraft();
+      await store.saveContainerCount(
+        rowOf(after, 'Caramel syrup'),
+        sealed: 1,
+        level: levelFull,
+        exactQty: null,
+      );
+      await store.saveNumberCount(rowOf(after, 'Fries pack').line.id, 2);
+
+      await store.removeRestock(
+        rowOf(after, 'Caramel syrup'),
+        rowOf(after, 'Caramel syrup').restocks.single,
+      );
+      await store.removeRestock(
+        rowOf(after, 'Fries pack'),
+        rowOf(after, 'Fries pack').restocks.single,
+      );
+
+      after = await store.loadDraft();
+      expect(lineOf(after, 'Caramel syrup').sealed, 0);
+      expect(lineOf(after, 'Caramel syrup').endQty, 2000);
+      expect(lineOf(after, 'Fries pack').endQty, 0);
+    });
+
+    test('removing the same restock twice only counts once', () async {
+      await stock.add(syrup());
+      final row = rowOf(await store.loadDraft(), 'Caramel syrup');
+      await store.addRestock(row, 2000);
+      await store.addRestock(row, 2000);
+
+      final restock = rowOf(
+        await store.loadDraft(),
+        'Caramel syrup',
+      ).restocks.first;
+      await store.removeRestock(row, restock);
+      await store.removeRestock(row, restock);
+
+      final line = lineOf(await store.loadDraft(), 'Caramel syrup');
+      expect(line.sealed, 1);
+      expect(line.inQty, 2000);
+    });
+  });
+
   group('when the owner changes an item during the day', () {
     test('a new container size works End out again, Start stays', () async {
       final id = await stock.add(syrup());

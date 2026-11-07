@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:intl/intl.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -95,6 +97,102 @@ class CountStore {
       where: 'id = ?',
       whereArgs: [stockItemId],
     );
+  }
+
+  // saves one restock, each one is its own event with a time (rule 3)
+  // restocks arrive sealed so a container item gets them in Sealed, a number item in the number
+  // the line stays untouched, a restock is not a count of the item
+  // transaction = the event and the line get saved together or not at all
+  // gives back the saved line so the panel can show the new number
+  Future<CountLine> addRestock(CountRow row, double qty) {
+    return _db.transaction((txn) async {
+      await txn.insert('stock_events', {
+        'day_id': row.line.dayId,
+        'stock_item_id': row.item.id,
+        'kind': 'in',
+        'qty': qty,
+        'created_at': _clock().toIso8601String(),
+      });
+
+      final line = await _readLine(txn, row.line.id);
+      final item = row.item;
+      final Map<String, Object?> count;
+      if (item.countType == CountType.container) {
+        count = _containerValues(
+          item,
+          sealed: line.sealed! + containersIn(qty, item.containerSize!),
+          level: line.level ?? levelNone,
+          exactQty: line.exactQty,
+        );
+      } else {
+        count = {'end_qty': roundAmount(line.endQty + qty)};
+      }
+      return _saveRestockChange(txn, row, count);
+    });
+  }
+
+  // removes one restock and takes it back out of Sealed or the number (rule 3)
+  // it stops at 0, the barista could have used those containers already
+  // nothing happens if the restock is already gone, like after a double tap
+  Future<CountLine> removeRestock(CountRow row, Restock restock) {
+    return _db.transaction((txn) async {
+      final removed = await txn.delete(
+        'stock_events',
+        where: 'id = ?',
+        whereArgs: [restock.id],
+      );
+      final line = await _readLine(txn, row.line.id);
+      if (removed == 0) return line;
+
+      final item = row.item;
+      final Map<String, Object?> count;
+      if (item.countType == CountType.container) {
+        count = _containerValues(
+          item,
+          sealed: sealedAfterRemove(
+            line.sealed!,
+            containersIn(restock.qty, item.containerSize!),
+          ),
+          level: line.level ?? levelNone,
+          exactQty: line.exactQty,
+        );
+      } else {
+        count = {'end_qty': max(0.0, roundAmount(line.endQty - restock.qty))};
+      }
+      return _saveRestockChange(txn, row, count);
+    });
+  }
+
+  // saves the new count fields and in_qty, in_qty is always the sum of the day's IN events
+  Future<CountLine> _saveRestockChange(
+    Transaction txn,
+    CountRow row,
+    Map<String, Object?> count,
+  ) async {
+    final sum = await txn.rawQuery(
+      '''
+      SELECT COALESCE(SUM(qty), 0) AS total FROM stock_events
+      WHERE day_id = ? AND stock_item_id = ? AND kind = 'in'
+      ''',
+      [row.line.dayId, row.item.id],
+    );
+    await txn.update(
+      'count_lines',
+      {...count, 'in_qty': roundAmount((sum.first['total'] as num).toDouble())},
+      where: 'id = ?',
+      whereArgs: [row.line.id],
+    );
+    return _readLine(txn, row.line.id);
+  }
+
+  // one count line fresh from the db, an autosave before this could have changed it
+  Future<CountLine> _readLine(Transaction txn, int lineId) async {
+    final rows = await txn.query(
+      'count_lines',
+      where: 'id = ?',
+      whereArgs: [lineId],
+    );
+    return CountLine.fromRow(rows.first);
   }
 
   // the date of a new draft: the day after the last submitted or closed day
@@ -305,11 +403,29 @@ class CountStore {
       where: 'is_archived = 0',
       orderBy: 'category COLLATE NOCASE, name COLLATE NOCASE',
     );
+    // id as the 2nd sort so 2 restocks in the same moment stay in the order they were added
+    final restockRows = await _db.query(
+      'stock_events',
+      where: "day_id = ? AND kind = 'in'",
+      whereArgs: [dayId],
+      orderBy: 'created_at, id',
+    );
+    final restocks = <int, List<Restock>>{};
+    for (final row in restockRows) {
+      final itemId = row['stock_item_id'] as int;
+      restocks.putIfAbsent(itemId, () => []).add(Restock.fromRow(row));
+    }
 
     final rows = <CountRow>[];
     for (final itemRow in itemRows) {
       final item = StockItem.fromRow(itemRow);
-      rows.add(CountRow(line: lines[item.id]!, item: item));
+      rows.add(
+        CountRow(
+          line: lines[item.id]!,
+          item: item,
+          restocks: restocks[item.id] ?? const [],
+        ),
+      );
     }
     return DraftDay(day: BusinessDay.fromRow(dayRows.first), rows: rows);
   }

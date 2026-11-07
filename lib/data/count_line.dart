@@ -93,12 +93,37 @@ class CountLine {
   }
 }
 
+// one restock from the stock_events table
+class Restock {
+  const Restock({required this.id, required this.qty, required this.time});
+
+  final int id;
+  // in base units
+  final double qty;
+  // on the tablet's clock, the db keeps it in utc
+  final DateTime time;
+
+  factory Restock.fromRow(Map<String, Object?> row) {
+    return Restock(
+      id: row['id'] as int,
+      qty: (row['qty'] as num).toDouble(),
+      time: DateTime.parse(row['created_at'] as String).toLocal(),
+    );
+  }
+}
+
 // a count line with its stock item, what the count tab needs for one row
 class CountRow {
-  const CountRow({required this.line, required this.item});
+  const CountRow({
+    required this.line,
+    required this.item,
+    this.restocks = const [],
+  });
 
   final CountLine line;
   final StockItem item;
+  // today's restocks, oldest first
+  final List<Restock> restocks;
 }
 
 // the draft day with all its rows, ordered by category then name

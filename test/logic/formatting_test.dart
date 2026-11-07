@@ -3,6 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:brewmanager/logic/formatting.dart';
 
 void main() {
+  test('formatTime uses small letters', () {
+    expect(formatTime(DateTime(2026, 11, 1, 14, 15)), '2:15pm');
+    expect(formatTime(DateTime(2026, 11, 1, 9, 5)), '9:05am');
+  });
+
   test('amounts get commas, no .0, and at most 2 decimals', () {
     expect(formatAmount(2000), '2,000');
     expect(formatAmount(2.5), '2.5');
