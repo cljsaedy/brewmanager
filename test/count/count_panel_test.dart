@@ -253,6 +253,66 @@ void main() {
     expect(rows!.single['low_value'], 3);
   });
 
+  testWidgets('a low level typed in kg shows and saves in kg', (tester) async {
+    // 1 kg low, saved as 1000 g
+    await openPanel(
+      tester,
+      const StockItem(
+        name: 'Coffee beans',
+        category: 'Beans',
+        baseUnit: BaseUnit.g,
+        countType: CountType.container,
+        containerLabel: 'bag',
+        containerSize: 250,
+        lowMode: LowMode.exact,
+        lowValue: 1000,
+        lowUnit: 'kg',
+      ),
+    );
+
+    final low = tester.widget<TextField>(find.byKey(const Key('low_field')));
+    expect(low.controller!.text, '1');
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('low_field')),
+        matching: find.text('kg'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.enterText(find.byKey(const Key('low_field')), '0.5');
+    await waitForDb(tester);
+
+    final rows = await tester.runAsync(() => db.query('stock_items'));
+    expect(rows!.single['low_value'], 500);
+    expect(rows.single['low_unit'], 'kg');
+  });
+
+  testWidgets('a number item shows its piece name instead of pcs', (
+    tester,
+  ) async {
+    await openPanel(
+      tester,
+      const StockItem(
+        name: 'Fries pack',
+        category: 'Food',
+        baseUnit: BaseUnit.pcs,
+        countType: CountType.number,
+        containerLabel: 'pack',
+        lowMode: LowMode.exact,
+        lowValue: 5,
+      ),
+    );
+
+    for (final key in ['number_field', 'in_field', 'low_field']) {
+      expect(
+        find.descendant(of: find.byKey(Key(key)), matching: find.text('packs')),
+        findsOneWidget,
+      );
+    }
+    expect(find.textContaining('pcs'), findsNothing);
+  });
+
   testWidgets('the panel opens showing what was saved', (tester) async {
     await openPanel(tester, syrup);
     await tapVisible(tester, find.byKey(const Key('sealed_plus')));

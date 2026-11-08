@@ -177,36 +177,80 @@ void main() {
       expect(find.text('Add stock item'), findsOneWidget);
     }
 
-    testWidgets('adds a container item, size typed in L is saved in ml', (
+    testWidgets(
+      'adds a container item, size typed in L is saved in ml and shown in L',
+      (tester) async {
+        await openAdd(tester);
+
+        await fill(tester, 'name_field', 'Caramel syrup');
+        await fill(tester, 'category_field', 'Syrups');
+        await fill(tester, 'label_field', 'bottle');
+        await fill(tester, 'size_field', '2');
+
+        // pick L in the size unit picker
+        await tester.tap(find.byKey(const Key('size_unit')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('L').last);
+        await tester.pumpAndSettle();
+        expect(find.text('= 2,000 ml'), findsOneWidget);
+
+        await fill(tester, 'low_field', '1');
+        await tapSave(tester);
+
+        // panel closed, full table back with the new row
+        expect(find.text('Add stock item'), findsNothing);
+        expect(find.text('Saved Caramel syrup.'), findsOneWidget);
+        expect(find.text('bottle · 2 L'), findsOneWidget);
+        expect(find.text('1 bottle'), findsOneWidget);
+
+        final saved = await tester.runAsync(
+          () => store.findByName('Caramel syrup'),
+        );
+        expect(saved!.containerSize, 2000);
+        expect(saved.sizeUnit, 'L');
+      },
+    );
+
+    testWidgets('an exact low level typed in kg stays kg on screen', (
       tester,
     ) async {
       await openAdd(tester);
 
-      await fill(tester, 'name_field', 'Caramel syrup');
-      await fill(tester, 'category_field', 'Syrups');
-      await fill(tester, 'label_field', 'bottle');
-      await fill(tester, 'size_field', '2');
+      await fill(tester, 'name_field', 'Coffee beans');
+      // the form scrolls, so bring each button into view before tapping it
+      Future<void> tapVisible(Finder target) async {
+        await tester.ensureVisible(target);
+        await tester.pumpAndSettle();
+        await tester.tap(target);
+        await tester.pumpAndSettle();
+      }
 
-      // pick L in the size unit picker
-      await tester.tap(find.byKey(const Key('size_unit')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('L').last);
-      await tester.pumpAndSettle();
-      expect(find.text('= 2,000 ml'), findsOneWidget);
-
+      await tapVisible(find.text('g'));
+      await fill(tester, 'size_field', '250');
+      await tapVisible(find.text('Exact amount'));
       await fill(tester, 'low_field', '1');
+      await tester.ensureVisible(find.byKey(const Key('low_unit')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('low_unit')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('kg').last);
+      await tester.pumpAndSettle();
       await tapSave(tester);
 
-      // panel closed, full table back with the new row
-      expect(find.text('Add stock item'), findsNothing);
-      expect(find.text('Saved Caramel syrup.'), findsOneWidget);
-      expect(find.text('bottle · 2,000 ml'), findsOneWidget);
-      expect(find.text('1 bottle'), findsOneWidget);
-
+      expect(find.text('1 kg'), findsOneWidget);
       final saved = await tester.runAsync(
-        () => store.findByName('Caramel syrup'),
+        () => store.findByName('Coffee beans'),
       );
-      expect(saved!.containerSize, 2000);
+      // the math still uses grams
+      expect(saved!.lowValue, 1000);
+      expect(saved.lowUnit, 'kg');
+
+      // opening it again shows 1 with kg picked, not 1000 g
+      await tester.tap(find.text('Coffee beans'));
+      await tester.pumpAndSettle();
+      final low = tester.widget<TextField>(find.byKey(const Key('low_field')));
+      expect(low.controller!.text, '1');
+      expect(find.text('kg'), findsWidgets);
     });
 
     testWidgets('number items are pcs with an exact low level', (tester) async {
@@ -214,8 +258,8 @@ void main() {
 
       await tester.tap(find.text('Number'));
       await tester.pumpAndSettle();
-      // no container boxes for number items
-      expect(find.byKey(const Key('label_field')), findsNothing);
+      // no size for number items, the name box is the piece name now
+      expect(find.text('Piece name (optional)'), findsOneWidget);
       expect(find.byKey(const Key('size_field')), findsNothing);
 
       await fill(tester, 'name_field', 'Fries pack');
@@ -228,6 +272,26 @@ void main() {
       final saved = await tester.runAsync(() => store.findByName('Fries pack'));
       expect(saved!.baseUnit, BaseUnit.pcs);
       expect(saved.lowMode, LowMode.exact);
+    });
+
+    testWidgets('a number item with a piece name shows it instead of pcs', (
+      tester,
+    ) async {
+      await openAdd(tester);
+
+      await tester.tap(find.text('Number'));
+      await tester.pumpAndSettle();
+      await fill(tester, 'name_field', 'Fries pack');
+      await fill(tester, 'label_field', 'pack');
+      expect(find.text('packs'), findsOneWidget);
+      await fill(tester, 'low_field', '5');
+      await tapSave(tester);
+
+      expect(find.text('5 packs'), findsOneWidget);
+      final saved = await tester.runAsync(() => store.findByName('Fries pack'));
+      // display only, still pcs
+      expect(saved!.baseUnit, BaseUnit.pcs);
+      expect(saved.containerLabel, 'pack');
     });
 
     testWidgets('saving with a broken rule shows the problem', (tester) async {

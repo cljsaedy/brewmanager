@@ -91,14 +91,46 @@ void main() {
       expect(names, ['Whole milk', 'Caramel syrup', 'vanilla syrup']);
     });
 
-    test('number items never keep a container label or size', () async {
+    test(
+      'number items keep the label as a piece name but never a size',
+      () async {
+        await store.add(
+          friesPack().copyWith(containerLabel: ' box ', containerSize: 10),
+        );
+        final item = (await store.list()).single;
+
+        expect(item.containerLabel, 'box');
+        expect(item.containerSize, isNull);
+        expect(item.baseUnit, BaseUnit.pcs);
+      },
+    );
+
+    test('typed units are saved, the base unit is saved as null', () async {
       await store.add(
-        friesPack().copyWith(containerLabel: 'box', containerSize: 10),
+        syrup().copyWith(
+          sizeUnit: 'L',
+          lowMode: LowMode.exact,
+          lowValue: 500,
+          lowUnit: 'ml',
+        ),
       );
       final item = (await store.list()).single;
 
-      expect(item.containerLabel, isNull);
-      expect(item.containerSize, isNull);
+      expect(item.sizeUnit, 'L');
+      expect(item.lowUnit, isNull);
+    });
+
+    test('a low unit is dropped in containers mode', () async {
+      await store.add(syrup().copyWith(lowUnit: 'L'));
+
+      expect((await store.list()).single.lowUnit, isNull);
+    });
+
+    test('a unit that does not fit the base unit is refused', () async {
+      expect(
+        () => store.add(syrup().copyWith(sizeUnit: 'kg')),
+        throwsA(isA<StockItemException>()),
+      );
     });
 
     test('categories gives each used category once', () async {

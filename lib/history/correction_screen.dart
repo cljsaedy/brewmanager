@@ -674,9 +674,9 @@ class _CorrectionScreenState extends State<CorrectionScreen> {
     final item = row.item;
     if (item.countType == CountType.number) {
       return [
-        _amountBox(_numberBox, 'End', 'end_field', item.baseUnit.name),
+        _amountBox(_numberBox, 'End', 'end_field', item.unitWord),
         const SizedBox(height: 12),
-        _amountBox(_inBox, 'In', 'in_field', item.baseUnit.name),
+        _amountBox(_inBox, 'In', 'in_field', item.unitWord),
         const SizedBox(height: 12),
         _textBox(_noteBox, 'Note', 'note_field'),
       ];

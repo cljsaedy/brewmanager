@@ -4,6 +4,14 @@ const String stockNeedsOpeningColumn =
     'needs_opening_count INTEGER NOT NULL DEFAULT 0 '
     'CHECK (needs_opening_count IN (0, 1))';
 
+// stock_items columns: the unit the owner typed the container size and the exact low level in (rule 1)
+// display only, the amounts stay in the base unit, null = typed in the base unit
+// kept here so the new table and the version 7 upgrade make the exact same columns
+const String stockSizeUnitColumn =
+    "size_unit TEXT CHECK (size_unit IS NULL OR size_unit IN ('g','kg','ml','L','oz','pcs'))";
+const String stockLowUnitColumn =
+    "low_unit TEXT CHECK (low_unit IS NULL OR low_unit IN ('g','kg','ml','L','oz','pcs'))";
+
 // count_lines column: 1 = this line is the item's opening count, it only sets the starting stock (rule 3)
 // saved on the line so the day still knows it after needs_opening_count gets cleared
 const String lineIsOpeningColumn =
@@ -89,6 +97,8 @@ const List<String> schemaStatements = [
     sort_order      INTEGER NOT NULL DEFAULT 0,
     is_archived     INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
     $stockNeedsOpeningColumn,
+    $stockSizeUnitColumn,
+    $stockLowUnitColumn,
     -- "IS NOT NULL" is needed since NULL > 0 gives unknown, and sqlite lets unknown pass a CHECK
     CHECK (count_type = 'number'
         OR (container_size IS NOT NULL AND container_size > 0)),

@@ -18,7 +18,8 @@ class DatabaseHelper {
   // 4 = stock_items.needs_opening_count and count_lines.is_opening (opening count, rule 3),
   // 5 = day_results.actual_qty can be empty (an opening count has no usage, rule 7)
   // 6 = corrections.target can be 'day' too (day note corrections, rule 4)
-  static const int version = 6;
+  // 7 = stock_items.size_unit and low_unit (the unit the owner typed, display only)
+  static const int version = 7;
 
   // the open database, null until first used
   static Database? _db;
@@ -119,6 +120,17 @@ class DatabaseHelper {
       for (final statement in correctionsTableStatements) {
         await db.execute(statement);
       }
+    }
+
+    // 6 -> 7: stock items remember the unit the owner typed the size and low level in
+    // ADD COLUMN keeps every row, old items get null = shown in the base unit like before
+    if (oldVersion < 7) {
+      await db.execute(
+        'ALTER TABLE stock_items ADD COLUMN $stockSizeUnitColumn',
+      );
+      await db.execute(
+        'ALTER TABLE stock_items ADD COLUMN $stockLowUnitColumn',
+      );
     }
   }
 

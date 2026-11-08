@@ -64,19 +64,22 @@ class _StockItemFormState extends State<StockItemForm> {
     final item = widget.item;
     if (item == null) return;
 
-    // editing: fill the boxes with the saved values, amounts shown in the base unit
+    // editing: fill the boxes with the saved values, amounts shown in the unit the owner typed them in
     _nameController.text = item.name;
     _categoryController.text = item.category;
     _labelController.text = item.containerLabel ?? '';
     _countType = item.countType;
     _baseUnit = item.baseUnit;
     _lowMode = item.lowMode;
-    _sizeUnit = _baseInputUnit(_baseUnit);
-    _lowUnit = _baseInputUnit(_baseUnit);
+    _sizeUnit = item.sizeInputUnit;
+    _lowUnit = item.lowInputUnit;
     if (item.containerSize != null) {
-      _sizeController.text = plainNumber(item.containerSize!);
+      // like 2000 ml saved as L shows 2
+      _sizeController.text = plainNumber(
+        fromBaseUnit(item.containerSize!, _sizeUnit),
+      );
     }
-    _lowController.text = plainNumber(item.lowValue);
+    _lowController.text = plainNumber(item.lowShown);
     _checkLocked(item.id!);
   }
 
@@ -154,10 +157,15 @@ class _StockItemFormState extends State<StockItemForm> {
       category: _categoryController.text,
       baseUnit: _baseUnit,
       countType: _countType,
-      containerLabel: _isContainer ? _labelController.text : null,
+      // number items keep it too, as the piece name
+      containerLabel: _labelController.text,
       containerSize: containerSize,
       lowMode: _lowMode,
       lowValue: lowValue,
+      // the typed units are saved only to show the amounts the same way again (rule 1)
+      // toRow drops them when they are the base unit or not used
+      sizeUnit: _isContainer ? _sizeUnit.label : null,
+      lowUnit: _lowMode == LowMode.exact ? _lowUnit.label : null,
     );
   }
 
@@ -315,10 +323,11 @@ class _StockItemFormState extends State<StockItemForm> {
                   _categoryField(),
                   const SizedBox(height: 18),
                   _countTypeAndUnit(text),
-                  if (_isContainer) ...[
-                    const SizedBox(height: 18),
-                    _containerFields(text),
-                  ],
+                  const SizedBox(height: 18),
+                  if (_isContainer)
+                    _containerFields(text)
+                  else
+                    _pieceNameField(),
                   const SizedBox(height: 18),
                   _lowStockFields(text),
                 ],
@@ -483,6 +492,21 @@ class _StockItemFormState extends State<StockItemForm> {
     );
   }
 
+  // number items: what 1 piece is called on screens, like "pack" (display only, it is still counted in pcs)
+  // same db column as the container name, so the box keeps its key
+  Widget _pieceNameField() {
+    return TextField(
+      key: const Key('label_field'),
+      controller: _labelController,
+      // redraw so the low-stock word ("packs") follows the typing
+      onChanged: (_) => setState(() {}),
+      decoration: const InputDecoration(
+        labelText: 'Piece name (optional)',
+        hintText: 'like pack, piece. Empty shows pcs',
+      ),
+    );
+  }
+
   // low-stock level: in containers or an exact amount
   Widget _lowStockFields(TextTheme text) {
     final label = _labelController.text.trim();
@@ -516,8 +540,11 @@ class _StockItemFormState extends State<StockItemForm> {
           // containers mode shows the container name instead of a unit picker
           units: _lowMode == LowMode.containers ? [] : inputUnitsFor(_baseUnit),
           unit: _lowUnit,
+          // containers mode: "bottles", a number item with a piece name: "packs"
           fixedSuffix: _lowMode == LowMode.containers
               ? pluralOf(label.isEmpty ? defaultContainerLabel : label)
+              : !_isContainer && label.isNotEmpty
+              ? pluralOf(label)
               : null,
           onUnitChanged: (unit) => setState(() => _lowUnit = unit),
         ),

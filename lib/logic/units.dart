@@ -43,6 +43,20 @@ List<InputUnit> inputUnitsFor(BaseUnit base) {
   return inputUnits.where((unit) => unit.baseUnit == base).toList();
 }
 
+// finds a saved unit label, like 'kg', the base unit itself when it is null or doesnt fit
+InputUnit inputUnitFor(String? label, BaseUnit base) {
+  final units = inputUnitsFor(base);
+  for (final unit in units) {
+    if (unit.label == label) return unit;
+  }
+  return units.first;
+}
+
+// the other way, a base amount shown in a typed unit, like 1000 g -> 1 (kg)
+double fromBaseUnit(double amount, InputUnit unit) {
+  return roundAmount(amount / unit.factor);
+}
+
 // changes a typed amount into the item's base unit, like 1.5 L -> 1500 ml
 // throws if the unit is the wrong kind (ml typed for a g item), since g <-> ml is not allowed
 double toBaseUnit(double amount, InputUnit from, BaseUnit itemUnit) {

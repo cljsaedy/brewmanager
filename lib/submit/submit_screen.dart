@@ -304,7 +304,7 @@ class _SubmitScreenState extends State<SubmitScreen> {
       final containers = containersIn(qty, item.containerSize!);
       return formatContainers(containers.toDouble(), item.containerName);
     }
-    return formatWithUnit(qty, item.baseUnit.name);
+    return amountText(item, qty);
   }
 
   Widget _checkCard(DayReview review) {

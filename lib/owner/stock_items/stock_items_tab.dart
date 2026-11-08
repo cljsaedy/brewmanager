@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../data/stock_item.dart';
 import '../../data/stock_item_store.dart';
-import '../../logic/formatting.dart';
 import '../../logic/units.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/category_title.dart';
@@ -319,15 +318,11 @@ class _StockItemsTabState extends State<StockItemsTab> {
     // 'container' when the owner left the container name empty
     final label = item.containerName;
 
-    // container column, like "bottle · 2,000 ml", number items have no container
-    final container = isContainer
-        ? '$label · ${formatWithUnit(item.containerSize ?? 0, unit)}'
-        : '—';
+    // container column in the unit the owner typed, like "bottle · 2 L", number items have no container
+    final container = isContainer ? '$label · ${item.sizeText}' : '—';
 
-    // low-stock level in the mode the owner picked, like "1 bottle" or "500 g"
-    final low = item.lowMode == LowMode.containers
-        ? formatContainers(item.lowValue, label)
-        : formatWithUnit(item.lowValue, unit);
+    // low-stock level the way the owner typed it, like "1 bottle", "1 kg" or "5 packs"
+    final low = item.lowText;
 
     // the row being edited gets a cream background so the owner sees which one is open
     final selected = _panelOpen && _editing?.id == item.id;

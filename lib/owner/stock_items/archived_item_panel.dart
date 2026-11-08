@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../data/stock_item.dart';
 import '../../data/stock_item_store.dart';
-import '../../logic/formatting.dart';
 import '../../logic/units.dart';
 import '../../theme/app_theme.dart';
 
@@ -47,11 +46,9 @@ class _ArchivedItemPanelState extends State<ArchivedItemPanel> {
 
     // same wording as the table rows
     final container = isContainer
-        ? '${item.containerName} · ${formatWithUnit(item.containerSize ?? 0, unit)}'
+        ? '${item.containerName} · ${item.sizeText}'
         : '—';
-    final low = item.lowMode == LowMode.containers
-        ? formatContainers(item.lowValue, item.containerName)
-        : formatWithUnit(item.lowValue, unit);
+    final low = item.lowText;
 
     return Card(
       child: Column(

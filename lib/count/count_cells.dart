@@ -6,12 +6,13 @@ import '../logic/units.dart';
 
 // what the logbook cells show, the count tab and the history tab both use these so they always match
 
-// the Unit cell, container items show both like "bottle • ml", number items like "pcs"
+// the Unit cell, container items show both like "bottle • ml"
+// number items show their piece name like "pack", or "pcs" when it is empty (display only)
 String unitText(StockItem item) {
   if (item.countType == CountType.container) {
     return '${item.containerName} • ${item.baseUnit.name}';
   }
-  return item.baseUnit.name;
+  return item.pieceName ?? item.baseUnit.name;
 }
 
 // a base amount the way the logbook shows it (rule 1)

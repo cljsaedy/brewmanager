@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../data/count_line.dart';
 import '../data/count_store.dart';
+import '../data/stock_item.dart';
 import '../logic/count_math.dart';
 import '../logic/formatting.dart';
 import '../logic/units.dart';
@@ -95,7 +96,8 @@ class _CountPanelState extends State<CountPanel> {
     _numberBox = TextEditingController(text: plainNumber(line.endQty));
     _noteBox = TextEditingController(text: line.note ?? '');
     _lowBox = TextEditingController(
-      text: plainNumber(widget.row.item.lowValue),
+      // in the unit the owner typed, like 1 (kg) for 1000 g
+      text: plainNumber(widget.row.item.lowShown),
     );
     _inBox = TextEditingController();
   }
@@ -170,7 +172,11 @@ class _CountPanelState extends State<CountPanel> {
     final value = readNumber(text);
     if (value == null) return;
 
-    await widget.store.saveLowValue(widget.row.item.id!, value);
+    // typed in the owner's unit, saved in the base unit, like 0.5 kg -> 500 g
+    await widget.store.saveLowValue(
+      widget.row.item.id!,
+      widget.row.item.lowFromShown(value),
+    );
     widget.onChanged();
   }
 
@@ -305,7 +311,7 @@ class _CountPanelState extends State<CountPanel> {
             restock.qty / item.containerSize!,
             item.containerName,
           )
-        : formatWithUnit(restock.qty, item.baseUnit.name);
+        : amountText(item, restock.qty);
     return '+$amount · ${formatTime(restock.time)}';
   }
 
@@ -314,8 +320,8 @@ class _CountPanelState extends State<CountPanel> {
   String _endText() {
     final line = widget.row.line;
     final item = widget.row.item;
+    if (!_isContainer) return 'End: ${amountText(item, line.endQty)}';
     final baseAmount = formatWithUnit(line.endQty, item.baseUnit.name);
-    if (!_isContainer) return 'End: $baseAmount';
 
     final containers = formatContainers(
       line.endQty / item.containerSize!,
@@ -496,7 +502,7 @@ class _CountPanelState extends State<CountPanel> {
       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
       decoration: InputDecoration(
         labelText: 'Number',
-        suffixText: widget.row.item.baseUnit.name,
+        suffixText: widget.row.item.unitWord,
       ),
     );
   }
@@ -529,7 +535,7 @@ class _CountPanelState extends State<CountPanel> {
                   labelText: 'Add restock',
                   suffixText: _isContainer
                       ? pluralOf(item.containerName)
-                      : item.baseUnit.name,
+                      : item.unitWord,
                 ),
               ),
             ),
@@ -614,7 +620,7 @@ class _CountPanelState extends State<CountPanel> {
     );
   }
 
-  // the unit next to the box comes from the mode the owner picked, like "bottles" or "g"
+  // the unit next to the box comes from what the owner picked, like "bottles", "kg" or "packs"
   Widget _lowField() {
     final item = widget.row.item;
 
@@ -626,9 +632,7 @@ class _CountPanelState extends State<CountPanel> {
       inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
       decoration: InputDecoration(
         labelText: 'Low-stock level',
-        suffixText: item.lowMode == LowMode.containers
-            ? pluralOf(item.containerName)
-            : item.baseUnit.name,
+        suffixText: item.lowWord,
       ),
     );
   }

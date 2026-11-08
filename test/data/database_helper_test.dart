@@ -577,6 +577,45 @@ void main() {
 
       await upgraded.close();
     });
+
+    test('version 6 stock items stay and get empty typed units', () async {
+      // a version 6 file: stock_items had no size_unit or low_unit
+      final old = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 6,
+          onCreate: (db, version) async {
+            await db.execute(
+              'CREATE TABLE stock_items (id INTEGER PRIMARY KEY, name TEXT)',
+            );
+            await db.insert('stock_items', {'name': 'Coffee beans'});
+          },
+        ),
+      );
+      await old.close();
+
+      final upgraded = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: DatabaseHelper.version,
+          onUpgrade: DatabaseHelper.onUpgrade,
+        ),
+      );
+
+      final item = (await upgraded.query('stock_items')).single;
+      // null = shown in the base unit, like before
+      expect(item['name'], 'Coffee beans');
+      expect(item['size_unit'], isNull);
+      expect(item['low_unit'], isNull);
+      await upgraded.update('stock_items', {'low_unit': 'kg'});
+      // the CHECK rule is there too
+      await expectLater(
+        upgraded.update('stock_items', {'low_unit': 'cups'}),
+        throwsA(isA<DatabaseException>()),
+      );
+
+      await upgraded.close();
+    });
   });
 
   test('a new database takes all 3 correction targets', () async {

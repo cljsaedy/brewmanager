@@ -53,7 +53,7 @@ class CorrectionEntry {
   }
 
   // an amount the way the logbook shows it, the new one with its unit
-  // like "2.5 → 3 bottles" or "6 → 8 pcs"
+  // like "2.5 → 3 bottles", "6 → 8 packs" or "6 → 8 pcs"
   String _amountChange() {
     final stock = item!;
     final oldAmount = double.parse(oldValue!);
@@ -65,7 +65,7 @@ class CorrectionEntry {
         stock.containerName,
       );
     } else {
-      newText = formatWithUnit(newAmount, stock.baseUnit.name);
+      newText = amountText(stock, newAmount);
     }
     return '${shownAmount(stock, oldAmount)} → $newText';
   }
