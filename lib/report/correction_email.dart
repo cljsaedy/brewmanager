@@ -5,6 +5,7 @@ import '../data/count_line.dart';
 import '../data/stock_item.dart';
 import '../logic/formatting.dart';
 import '../logic/units.dart';
+import 'count_table_html.dart';
 
 // one logged change, a row of the corrections table with the name of what it changed
 class CorrectionEntry {
@@ -102,29 +103,6 @@ String correctionEmailHtml({
   html
     ..writeln('</ul>')
     ..writeln('<h3>Corrected count</h3>')
-    ..writeln(
-      '<table border="1" cellpadding="6" style="border-collapse: collapse">',
-    )
-    ..writeln(
-      '<tr><th>Item</th><th>Unit</th><th>Start</th><th>In</th>'
-      '<th>Out</th><th>End</th><th>Note</th></tr>',
-    );
-  for (final row in rows) {
-    final item = row.item;
-    final line = row.line;
-    final cells = [
-      item.name,
-      unitText(item),
-      shownAmount(item, line.startQty),
-      shownAmount(item, line.inQty),
-      outText(item, line),
-      shownAmount(item, line.endQty),
-      line.note ?? '',
-    ];
-    html.writeln(
-      '<tr>${cells.map((cell) => '<td>${escape.convert(cell)}</td>').join()}</tr>',
-    );
-  }
-  html.writeln('</table>');
+    ..write(countTableHtml(rows));
   return html.toString();
 }

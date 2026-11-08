@@ -5,7 +5,10 @@ import '../logic/clock.dart';
 import '../logic/count_math.dart';
 import '../logic/units.dart';
 import '../logic/usage_math.dart';
+import '../report/daily_email.dart';
+import '../report/template_summary.dart';
 import 'count_line.dart';
+import 'report_store.dart';
 import 'stock_item.dart';
 
 // one IN or OUT event for the review
@@ -243,8 +246,37 @@ class SubmitStore {
         ''',
         [dayId],
       );
+
+      // the owner's daily report goes in the outbox in this same transaction (rule 10)
+      // so a submitted day always has its email waiting, feature 9c sends it
+      // the template summary for now, the ai one can take its place later (9b)
+      await _queueDailyReport(txn, dayId, date, submittedAt);
       return true;
     });
+  }
+
+  // builds the daily report from the saved results and queues its email
+  // summary_source says which summary went in, so the evaluation can count them
+  Future<void> _queueDailyReport(
+    Transaction txn,
+    int dayId,
+    String date,
+    String createdAt,
+  ) async {
+    final report = await ReportStore(txn).load(dayId);
+    await txn.insert('outbox', {
+      'kind': 'daily',
+      'day_id': dayId,
+      'subject': dailySubject(date),
+      'html_body': dailyEmailHtml(report, templateSummary(report)),
+      'created_at': createdAt,
+    });
+    await txn.update(
+      'business_days',
+      {'summary_source': 'template'},
+      where: 'id = ?',
+      whereArgs: [dayId],
+    );
   }
 
   // works out a submitted day's numbers again, a correction calls this inside its own transaction

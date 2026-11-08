@@ -160,6 +160,18 @@ void main() {
     return result;
   }
 
+  // only the correction emails, every submit queues a daily email too
+  Future<List<Map<String, Object?>>> correctionEmails(
+    WidgetTester tester,
+  ) async {
+    late List<Map<String, Object?>> result;
+    await tester.runAsync(
+      () async =>
+          result = await db.query('outbox', where: "kind = 'correction'"),
+    );
+    return result;
+  }
+
   testWidgets('correct shows only on the newest submitted day', (tester) async {
     await tester.runAsync(addDays);
     await openHistory(tester);
@@ -204,7 +216,7 @@ void main() {
     expect(find.text('End 6 · In 0 · Out 2'), findsOneWidget);
     expect(find.text('Save corrections (1)'), findsOneWidget);
     expect(await rows(tester, 'corrections'), isEmpty);
-    expect(await rows(tester, 'outbox'), isEmpty);
+    expect(await correctionEmails(tester), isEmpty);
 
     await saveAll(tester);
 
@@ -279,7 +291,7 @@ void main() {
       findsOneWidget,
     );
     expect(await rows(tester, 'corrections'), hasLength(2));
-    expect(await rows(tester, 'outbox'), hasLength(1));
+    expect(await correctionEmails(tester), hasLength(1));
   });
 
   testWidgets('add change stays off when nothing is different', (tester) async {
@@ -382,7 +394,7 @@ void main() {
     // back on history, nothing saved
     expect(find.byKey(const Key('correct_button')), findsOneWidget);
     expect(await rows(tester, 'corrections'), isEmpty);
-    expect(await rows(tester, 'outbox'), isEmpty);
+    expect(await correctionEmails(tester), isEmpty);
   });
 
   testWidgets('cancel with nothing waiting just closes', (tester) async {

@@ -151,6 +151,11 @@ void main() {
     return rows.single;
   }
 
+  // only the correction emails, every submit queues a daily email too
+  Future<List<Map<String, Object?>>> correctionEmails() {
+    return db.query('outbox', where: "kind = 'correction'");
+  }
+
   Future<CountLine> lineOf(int dayId, int itemId) async {
     final rows = await db.query(
       'count_lines',
@@ -213,7 +218,7 @@ void main() {
 
       expect(changed, isFalse);
       expect(await db.query('corrections'), isEmpty);
-      expect(await db.query('outbox'), isEmpty);
+      expect(await correctionEmails(), isEmpty);
     });
 
     test('an error undoes the whole fix', () async {
@@ -258,7 +263,7 @@ void main() {
       expect(result['actual_qty'], 2);
       expect(result['gap'], 0);
 
-      final email = (await db.query('outbox')).single;
+      final email = (await correctionEmails()).single;
       expect(email['kind'], 'correction');
       expect(email['day_id'], day2);
       expect(email['status'], 'queued');
@@ -278,7 +283,7 @@ void main() {
         'missed one',
       );
 
-      final body = (await db.query('outbox')).single['html_body'] as String;
+      final body = (await correctionEmails()).single['html_body'] as String;
       // 2 sealed + 25% = 2.25, 3 sealed + 25% = 3.25
       expect(body, contains('Caramel syrup End 2.25 → 3.25 bottles.'));
     });
@@ -428,7 +433,7 @@ void main() {
         'Fries pack note (none) → “1 pack dropped”',
         'Day note (none) → “power outage at 3pm”',
       ]);
-      expect(await db.query('outbox'), hasLength(2));
+      expect(await correctionEmails(), hasLength(2));
     });
 
     test('changing several fields logs each one', () async {
@@ -447,7 +452,7 @@ void main() {
       )).map((row) => row['field']);
       expect(fields, ['end', 'in', 'note']);
       // still 1 email for 1 fix
-      expect(await db.query('outbox'), hasLength(1));
+      expect(await correctionEmails(), hasLength(1));
     });
   });
 
@@ -478,7 +483,7 @@ void main() {
       final day2 = await twoDays();
 
       expect(await fixes.correctTally(day2, friesMenuId, 2, 'x'), isFalse);
-      expect(await db.query('outbox'), isEmpty);
+      expect(await correctionEmails(), isEmpty);
     });
 
     test('the recipes from the submit are used, not new ones', () async {
@@ -511,7 +516,7 @@ void main() {
         'missed a receipt',
         'forgot',
       ]);
-      final emails = await db.query('outbox');
+      final emails = await correctionEmails();
       expect(emails, hasLength(1));
       final html = emails.single['html_body'] as String;
       expect(html, contains('Fries pack End 5 → 6 pcs'));
@@ -543,7 +548,7 @@ void main() {
         ]),
         0,
       );
-      expect(await db.query('outbox'), isEmpty);
+      expect(await correctionEmails(), isEmpty);
     });
 
     test('an error in 1 change undoes all of them', () async {
@@ -560,7 +565,7 @@ void main() {
 
       expect((await lineOf(day2, friesId)).endQty, 5);
       expect(await db.query('corrections'), isEmpty);
-      expect(await db.query('outbox'), isEmpty);
+      expect(await correctionEmails(), isEmpty);
     });
 
     test('1 missing reason stops all of them before anything starts', () async {
