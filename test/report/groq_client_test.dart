@@ -44,6 +44,9 @@ void main() {
     expect(body['model'], groqModel);
     expect(body['temperature'], 0);
     expect(body['max_completion_tokens'], groqMaxTokens);
+    expect(body['reasoning_effort'], 'low');
+    // the thinking is left out, the answer is only in message.content
+    expect(body['include_reasoning'], isFalse);
     final messages = body['messages'] as List;
     expect(messages[0]['role'], 'system');
     expect(messages[0]['content'], contains('as digits'));

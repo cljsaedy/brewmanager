@@ -8,13 +8,20 @@ import 'package:http/http.dart' as http;
 const String groqUrl = 'https://api.groq.com/openai/v1/chat/completions';
 
 // a current production model on groq, change it here if groq retires it
-const String groqModel = 'llama-3.3-70b-versatile';
+// check https://console.groq.com/docs/deprecations, the models page can be behind
+// llama-3.3-70b-versatile was shut down on aug 16 2026, groq's replacement is this one
+const String groqModel = 'openai/gpt-oss-120b';
+
+// gpt-oss is a reasoning model, it thinks before it answers
+// low = only a little thinking, putting given numbers into words doesnt need more, and it is faster
+const String groqReasoningEffort = 'low';
 
 // the longest the app waits for groq, after this the template summary is used
 const Duration groqTimeout = Duration(seconds: 20);
 
-// enough room for about 120 words, the limit is in the instructions too
-const int groqMaxTokens = 400;
+// groq's default length, the thinking may count toward it so 400 could leave no room for the answer
+// the summary itself stays short, "at most 120 words" is in the instructions
+const int groqMaxTokens = 1024;
 
 // what the model is told, rule 10 plus the digits rule so the number check can trust every number
 const String groqInstructions = '''
@@ -63,6 +70,9 @@ class GroqClient {
             // 0 = always the most likely words, the same facts give the same text
             'temperature': 0,
             'max_completion_tokens': groqMaxTokens,
+            'reasoning_effort': groqReasoningEffort,
+            // false = the thinking is left out of the answer, only message.content is used anyway
+            'include_reasoning': false,
             'messages': [
               {'role': 'system', 'content': groqInstructions},
               {'role': 'user', 'content': factsJson},
