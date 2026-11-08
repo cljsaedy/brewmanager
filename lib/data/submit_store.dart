@@ -247,8 +247,20 @@ class SubmitStore {
     });
   }
 
+  // works out a submitted day's numbers again, a correction calls this inside its own transaction
+  // it uses the recipes from when the day was submitted, not the ones now (rule 12)
+  Future<void> recalculate(Transaction txn, int dayId) async {
+    final rows = await txn.query(
+      'business_days',
+      where: 'id = ?',
+      whereArgs: [dayId],
+    );
+    final day = BusinessDay.fromRow(rows.first);
+    await _saveResults(txn, dayId, day.businessDate, day.submittedAt!);
+  }
+
   // works out and saves the numbers of a day, the old ones get replaced
-  // on its own since a correction has to do this again in feature 8
+  // on its own since a correction has to do this again
   // only items still active get results, an item archived during the day was hidden from the barista
   Future<void> _saveResults(
     Transaction txn,

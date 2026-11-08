@@ -17,7 +17,8 @@ class DatabaseHelper {
   // 3 = recipe_lines.input_unit (the unit the owner typed),
   // 4 = stock_items.needs_opening_count and count_lines.is_opening (opening count, rule 3),
   // 5 = day_results.actual_qty can be empty (an opening count has no usage, rule 7)
-  static const int version = 5;
+  // 6 = corrections.target can be 'day' too (day note corrections, rule 4)
+  static const int version = 6;
 
   // the open database, null until first used
   static Database? _db;
@@ -107,6 +108,17 @@ class DatabaseHelper {
     if (oldVersion < 5) {
       await db.execute('DROP TABLE IF EXISTS day_results');
       await db.execute(dayResultsTable);
+    }
+
+    // 5 -> 6: corrections.target can be 'day'
+    // same as above, sqlite cant change a CHECK rule so the table gets made again
+    // it is always empty here, nothing saves a correction before feature 8
+    // dropping the table drops its index too, so the list makes both again
+    if (oldVersion < 6) {
+      await db.execute('DROP TABLE IF EXISTS corrections');
+      for (final statement in correctionsTableStatements) {
+        await db.execute(statement);
+      }
     }
   }
 

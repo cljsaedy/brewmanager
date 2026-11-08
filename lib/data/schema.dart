@@ -28,6 +28,28 @@ const String dayResultsTable = '''
   )
 ''';
 
+// log of every correction, never overwrite silently (rule 4)
+// target says what line_id points to: count = count_lines, tally = tally_lines, day = business_days (the day note)
+// so line_id has no foreign key
+// old/new value are text since the field can be a number or a note, numbers are in base units
+// kept here so the new table and the version 6 upgrade make the exact same table
+const List<String> correctionsTableStatements = [
+  '''
+  CREATE TABLE corrections (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    day_id       INTEGER NOT NULL REFERENCES business_days(id),
+    target       TEXT NOT NULL CHECK (target IN ('count', 'tally', 'day')),
+    line_id      INTEGER NOT NULL,
+    field        TEXT NOT NULL,
+    old_value    TEXT,
+    new_value    TEXT,
+    reason       TEXT NOT NULL CHECK (trim(reason) <> ''),
+    corrected_at TEXT NOT NULL
+  )
+  ''',
+  'CREATE INDEX idx_corrections_day ON corrections (day_id)',
+];
+
 // all the CREATE TABLE / CREATE INDEX statements for the database, run once when the db file is first made
 //
 // notes for every table:
@@ -156,23 +178,7 @@ const List<String> schemaStatements = [
   ''',
   'CREATE INDEX idx_container_checks_day ON container_checks (day_id)',
 
-  // log of every correction, never overwrite silently
-  // line_id points to a count_lines or tally_lines row depending on target, so no foreign key here
-  // old/new value are text since the field can be a number or a note
-  '''
-  CREATE TABLE corrections (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    day_id       INTEGER NOT NULL REFERENCES business_days(id),
-    target       TEXT NOT NULL CHECK (target IN ('count', 'tally')),
-    line_id      INTEGER NOT NULL,
-    field        TEXT NOT NULL,
-    old_value    TEXT,
-    new_value    TEXT,
-    reason       TEXT NOT NULL CHECK (trim(reason) <> ''),
-    corrected_at TEXT NOT NULL
-  )
-  ''',
-  'CREATE INDEX idx_corrections_day ON corrections (day_id)',
+  ...correctionsTableStatements,
 
   // every email waits here first, then gets sent (or retried later if no internet)
   // recovery = pin recovery code email, has no day and its body gets blanked after sending

@@ -5,6 +5,8 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:brewmanager/data/database_helper.dart';
 
+import '../helpers/test_database.dart';
+
 // these tests run on the pc, not the tablet
 // sqflite_common_ffi lets sqlite run on the pc, and inMemoryDatabasePath makes a fresh db in memory (no file)
 void main() {
@@ -526,5 +528,84 @@ void main() {
 
       await upgraded.close();
     });
+
+    test('version 5 corrections take a day note correction', () async {
+      // a version 5 file: corrections only took count and tally
+      final old = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 5,
+          onCreate: (db, version) async {
+            await db.execute(
+              'CREATE TABLE stock_items (id INTEGER PRIMARY KEY, name TEXT)',
+            );
+            await db.execute(
+              "CREATE TABLE corrections (id INTEGER PRIMARY KEY, "
+              "target TEXT CHECK (target IN ('count', 'tally')))",
+            );
+            await db.insert('stock_items', {'name': 'Milk'});
+          },
+        ),
+      );
+      await old.close();
+
+      final upgraded = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: DatabaseHelper.version,
+          onUpgrade: DatabaseHelper.onUpgrade,
+        ),
+      );
+
+      // the business day has to be there for the foreign key, but they are off here
+      await upgraded.insert('corrections', {
+        'day_id': 1,
+        'target': 'day',
+        'line_id': 1,
+        'field': 'day_note',
+        'reason': 'typo',
+        'corrected_at': '2026-11-01T10:00:00.000Z',
+      });
+      expect(await upgraded.query('corrections'), hasLength(1));
+      final indexes = await upgraded.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'index' "
+        "AND name = 'idx_corrections_day'",
+      );
+      expect(indexes, hasLength(1));
+      // the other tables keep their rows
+      expect(await upgraded.query('stock_items'), hasLength(1));
+
+      await upgraded.close();
+    });
+  });
+
+  test('a new database takes all 3 correction targets', () async {
+    final db = await openTestDatabase();
+    final dayId = await db.insert('business_days', {
+      'business_date': '2026-11-01',
+    });
+
+    for (final target in ['count', 'tally', 'day']) {
+      await db.insert('corrections', {
+        'day_id': dayId,
+        'target': target,
+        'line_id': 1,
+        'field': 'x',
+        'reason': 'typo',
+        'corrected_at': '2026-11-01T10:00:00.000Z',
+      });
+    }
+    await expectLater(
+      db.insert('corrections', {
+        'day_id': dayId,
+        'target': 'menu',
+        'line_id': 1,
+        'field': 'x',
+        'reason': 'typo',
+        'corrected_at': '2026-11-01T10:00:00.000Z',
+      }),
+      throwsA(isA<DatabaseException>()),
+    );
+    await db.close();
   });
 }

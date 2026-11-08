@@ -6,6 +6,7 @@ import '../logic/business_day.dart';
 import '../logic/clock.dart';
 import '../logic/count_math.dart';
 import '../logic/units.dart';
+import 'correction_store.dart';
 import 'count_line.dart';
 import 'history_store.dart';
 import 'stock_item.dart';
@@ -27,6 +28,9 @@ class CountStore {
 
   // the past days for the history tab, it uses this same db
   HistoryStore get history => HistoryStore(_db);
+
+  // fixes on the latest submitted day, it uses this same db and clock
+  CorrectionStore get corrections => CorrectionStore(_db, clock: _clock);
 
   // today's date on the tablet
   String get today => dateText(_clock().toLocal());

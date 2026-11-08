@@ -23,9 +23,10 @@ class HistoryDetail {
 
 // reads the submitted and closed days for the history tab, it never changes anything
 class HistoryStore {
+  // the db or a transaction, a correction reads the day inside its own transaction
   HistoryStore(this._db);
 
-  final Database _db;
+  final DatabaseExecutor _db;
 
   // the submitted and closed days, newest first, the draft is not history yet
   Future<List<BusinessDay>> days() async {
