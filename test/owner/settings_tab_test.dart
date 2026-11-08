@@ -132,4 +132,30 @@ void main() {
     expect(keys.values, isEmpty);
     expect(find.text('Not set.'), findsNWidgets(3));
   });
+
+  testWidgets('shows what happened the last time the ai summary was tried', (
+    tester,
+  ) async {
+    await tester.runAsync(
+      () => db.insert('app_settings', {
+        'key': EmailSettingsStore.lastAiTryKey,
+        'value': 'call failed: ClientException: Failed host lookup',
+      }),
+    );
+    await openSettings(tester);
+
+    expect(
+      find.text(
+        'Last AI summary: not used '
+        '(call failed: ClientException: Failed host lookup).',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('no last try, no note', (tester) async {
+    await openSettings(tester);
+
+    expect(find.byKey(const Key('last_ai_try')), findsNothing);
+  });
 }

@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- internet for the 2 online parts only: the ai summary (groq) and sending emails (mailjet)
+         the debug and profile manifests already had it, so it worked there but not in a release build -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <!-- allowBackup off: android auto backup can bring back an old secure storage file that cant be read anymore
          (crash "Failed to unwrap key"), the app has its own backup in owner settings (rule 13) -->
     <application

@@ -244,7 +244,30 @@ class _SettingsTabState extends State<SettingsTab> {
           _keyField(key, settings.hasKey(key)),
           const SizedBox(height: 12),
         ],
+        if (settings.lastAiTry != null) _lastAiTry(text, settings.lastAiTry!),
       ],
+    );
+  }
+
+  // what happened the last time the ai summary was tried, so a failure says why
+  // green when it was used, amber otherwise
+  Widget _lastAiTry(TextTheme text, String lastTry) {
+    final used = lastTry == 'ai';
+    return Container(
+      key: const Key('last_ai_try'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: used ? AppColors.okBg : AppColors.warnBg,
+        borderRadius: BorderRadius.circular(AppTheme.buttonRadius),
+      ),
+      child: Text(
+        used
+            ? 'Last AI summary: used in the report.'
+            : 'Last AI summary: not used ($lastTry).',
+        style: text.bodySmall?.copyWith(
+          color: used ? AppColors.okText : AppColors.warnText,
+        ),
+      ),
     );
   }
 

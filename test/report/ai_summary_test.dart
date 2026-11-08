@@ -142,6 +142,52 @@ void main() {
     expect(await savedOutcome(), 'no_key');
   });
 
+  Future<String?> lastTry() async {
+    final rows = await db.query(
+      'app_settings',
+      where: 'key = ?',
+      whereArgs: [AiSummary.lastTryKey],
+    );
+    return rows.isEmpty ? null : rows.single['value'] as String?;
+  }
+
+  test('the last try says what went wrong', () async {
+    final offline = MockClient(
+      (_) async => throw http.ClientException('Failed host lookup'),
+    );
+    await AiSummary(db, keys, offline).improve(dayId);
+    expect(
+      await lastTry(),
+      contains('call failed: ClientException: Failed host lookup'),
+    );
+
+    await AiSummary(
+      db,
+      keys,
+      MockClient((_) async => http.Response('{"error":"bad key"}', 401)),
+    ).improve(dayId);
+    expect(await lastTry(), contains('HTTP 401'));
+
+    await AiSummary(
+      db,
+      keys,
+      groqSays('Fries pack used 4 packs.'),
+    ).improve(dayId);
+    expect(await lastTry(), 'check failed: did not match: 4');
+
+    await AiSummary(db, keys, groqSays(goodText)).improve(dayId);
+    expect(await lastTry(), 'ai');
+  });
+
+  test('a long error is cut short', () async {
+    final failing = MockClient((_) async => http.Response('x' * 1000, 500));
+
+    await AiSummary(db, keys, failing).improve(dayId);
+
+    expect((await lastTry())!.length, lessThan(340));
+    expect(await lastTry(), endsWith('...'));
+  });
+
   test('a text that passes goes in the email', () async {
     final outcome = await AiSummary(
       db,

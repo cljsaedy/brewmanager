@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
 
+import '../data/email_settings_store.dart';
 import '../data/report_store.dart';
 import '../security/key_store.dart';
 import 'daily_email.dart';
@@ -41,9 +42,20 @@ class AiSummary {
   final KeyStore _keys;
   final http.Client _http;
 
+  // app_settings key of the last try in words, shown in owner settings
+  // like "call failed: ClientException: Failed host lookup" so a failure says what went wrong
+  static const String lastTryKey = EmailSettingsStore.lastAiTryKey;
+
+  // longest error text kept, a groq error body can be long
+  static const int _maxErrorLength = 300;
+
+  // what went wrong on this try, null when nothing did
+  String? _problem;
+
   // never throws, every problem just keeps the template
-  // the outcome is saved on the day every time, whatever it is
+  // the outcome is saved on the day every time, whatever it is, and the last try is saved in words
   Future<SummaryOutcome> improve(int dayId) async {
+    _problem = null;
     final outcome = await _attempt(dayId);
     try {
       await _db.update(
@@ -52,10 +64,25 @@ class AiSummary {
         where: 'id = ?',
         whereArgs: [dayId],
       );
+      await _db.insert('app_settings', {
+        'key': lastTryKey,
+        'value': _lastTryText(outcome),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     } catch (_) {
-      // only the evaluation note is lost, the email is fine
+      // only the notes are lost, the email is fine
     }
     return outcome;
+  }
+
+  // like "check failed: did not match: 4" or "call failed: GroqException: HTTP 401: ..."
+  String _lastTryText(SummaryOutcome outcome) {
+    final words = outcome.dbValue.replaceAll('_', ' ');
+    final problem = _problem;
+    if (problem == null) return words;
+    final short = problem.length > _maxErrorLength
+        ? '${problem.substring(0, _maxErrorLength)}...'
+        : problem;
+    return '$words: $short';
   }
 
   Future<SummaryOutcome> _attempt(int dayId) async {
@@ -69,11 +96,17 @@ class AiSummary {
       final String text;
       try {
         text = await GroqClient(_http, key).summarize(facts);
-      } catch (_) {
+      } catch (error) {
+        // the error's text says what happened, like "Failed host lookup" = no internet
+        _problem = error.toString();
         return SummaryOutcome.callFailed;
       }
 
-      if (!checkNumbers(text, facts).passed) return SummaryOutcome.checkFailed;
+      final check = checkNumbers(text, facts);
+      if (!check.passed) {
+        _problem = 'did not match: ${check.mismatches.join(', ')}';
+        return SummaryOutcome.checkFailed;
+      }
 
       // the email body and summary_source change together or not at all
       return await _db.transaction((txn) async {
@@ -93,8 +126,9 @@ class AiSummary {
         );
         return SummaryOutcome.ai;
       });
-    } catch (_) {
+    } catch (error) {
       // like secure storage not reading, the template stays and the day is fine
+      _problem = error.toString();
       return SummaryOutcome.callFailed;
     }
   }

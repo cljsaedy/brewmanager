@@ -9,6 +9,7 @@ class EmailSettings {
     required this.ownerEmail,
     required this.senderEmail,
     required this.savedKeys,
+    this.lastAiTry,
   });
 
   // where the daily report goes, null = not set yet
@@ -17,6 +18,8 @@ class EmailSettings {
   final String? senderEmail;
   // which api keys have a value saved
   final Set<ApiKey> savedKeys;
+  // what happened the last time the ai summary was tried, like "call failed: ...", null = never tried
+  final String? lastAiTry;
 
   bool hasKey(ApiKey key) => savedKeys.contains(key);
 }
@@ -32,6 +35,8 @@ class EmailSettingsStore {
   // key names of the rows in app_settings
   static const String ownerEmailKey = 'owner_email';
   static const String senderEmailKey = 'sender_email';
+  // written by the ai summary step after every try, only read here
+  static const String lastAiTryKey = 'last_ai_try';
 
   Future<EmailSettings> load() async {
     final saved = <ApiKey>{};
@@ -43,6 +48,7 @@ class EmailSettingsStore {
       ownerEmail: await _read(ownerEmailKey),
       senderEmail: await _read(senderEmailKey),
       savedKeys: saved,
+      lastAiTry: await _read(lastAiTryKey),
     );
   }
 
