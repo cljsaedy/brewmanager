@@ -10,7 +10,7 @@ import 'daily_email.dart';
 import 'groq_client.dart';
 import 'number_check.dart';
 import 'report_facts.dart';
-import 'template_summary.dart';
+import 'summary_parts.dart';
 
 // what happened when the app tried the ai summary
 // saved in business_days.ai_outcome so the evaluation can count passed vs fell back (chapter 4)
@@ -103,9 +103,17 @@ class AiSummary {
         return SummaryOutcome.callFailed;
       }
 
-      final check = checkNumbers(text, facts);
-      if (!check.passed) {
-        _problem = 'did not match: ${check.mismatches.join(', ')}';
+      // the answer must be json in the 5-part shape, then every part must pass the checks
+      final SummaryParts parts;
+      try {
+        parts = SummaryParts.fromJson(jsonDecode(text));
+      } on FormatException catch (error) {
+        _problem = 'not the summary shape: ${error.message}';
+        return SummaryOutcome.checkFailed;
+      }
+      final problem = summaryProblem(parts, facts);
+      if (problem != null) {
+        _problem = problem;
         return SummaryOutcome.checkFailed;
       }
 
@@ -113,13 +121,7 @@ class AiSummary {
       return await _db.transaction((txn) async {
         final changed = await txn.update(
           'outbox',
-          {
-            'html_body': dailyEmailHtml(
-              report,
-              summaryBullets(text),
-              fromAi: true,
-            ),
-          },
+          {'html_body': dailyEmailHtml(report, parts, fromAi: true)},
           where: "kind = 'daily' AND day_id = ? AND status = 'queued'",
           whereArgs: [dayId],
         );
@@ -139,4 +141,35 @@ class AiSummary {
       return SummaryOutcome.callFailed;
     }
   }
+}
+
+// words and marks the owner must never see in the summary (rule 10)
+// tally = the barista's word, the owner reads orders
+final RegExp _tallyWord = RegExp(r'\btall(y|ied|ies)\b', caseSensitive: false);
+
+// markdown: * # or a backtick anywhere, or a line starting with a dash or dot like a bullet
+// they would show as plain symbols in the email
+final RegExp _markdown = RegExp(r'[*#`]|^\s*[-•]\s', multiLine: true);
+
+// checks every part of the ai summary, gives back what is wrong, or null when all of it passes
+// any problem in any part = the whole template is used instead, never half ai and half template
+// the number check runs on each part on its own so a mismatch says which part it was in
+String? summaryProblem(SummaryParts parts, String facts) {
+  for (final entry in parts.byKey.entries) {
+    final text = entry.value;
+    final check = checkNumbers(text, facts);
+    if (!check.passed) {
+      return 'did not match: ${check.mismatches.join(', ')} (in ${entry.key})';
+    }
+    if (_tallyWord.hasMatch(text)) {
+      return 'used the word tally (in ${entry.key})';
+    }
+    if (_markdown.hasMatch(text)) {
+      return 'used markdown or symbols (in ${entry.key})';
+    }
+  }
+  if (parts.byKey.values.every((text) => text.isEmpty)) {
+    return 'the answer was empty';
+  }
+  return null;
 }

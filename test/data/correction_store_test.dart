@@ -522,7 +522,7 @@ void main() {
       expect(emails, hasLength(1));
       final html = emails.single['html_body'] as String;
       expect(html, contains('Fries pack End 5 → 6 pcs'));
-      expect(html, contains('French Fries tally 2 → 3'));
+      expect(html, contains('French Fries orders 2 → 3'));
       expect(html, contains('power outage'));
       // 6 fries left from 8, 3 tallied: actual 2, expected 3
       expect((await resultOf(day2, friesId))['actual_qty'], 2);

@@ -42,7 +42,18 @@ void main() {
     expect(sent.headers['Authorization'], 'Bearer test-key');
     final body = jsonDecode(sent.body) as Map<String, dynamic>;
     expect(body['model'], groqModel);
-    expect(body['temperature'], 0);
+    expect(body['temperature'], groqTemperature);
+    // the answer must follow the 5-part shape, strict so groq enforces it
+    final format = body['response_format'] as Map<String, dynamic>;
+    expect(format['type'], 'json_schema');
+    expect(format['json_schema']['strict'], isTrue);
+    expect(format['json_schema']['schema']['required'], [
+      'overview',
+      'gaps',
+      'restock',
+      'containers',
+      'fine',
+    ]);
     expect(body['max_completion_tokens'], groqMaxTokens);
     expect(body['reasoning_effort'], 'low');
     // the thinking is left out, the answer is only in message.content

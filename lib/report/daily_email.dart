@@ -1,9 +1,9 @@
 import '../data/stock_item.dart';
 import '../logic/formatting.dart';
-import '../logic/units.dart';
 import 'count_table_html.dart';
 import 'daily_report.dart';
 import 'report_text.dart';
+import 'summary_parts.dart';
 
 // the subject of the daily email, like "Daily count for Fri, Oct 30"
 String dailySubject(String date) => 'Daily count for ${formatLongDate(date)}';
@@ -11,50 +11,44 @@ String dailySubject(String date) => 'Daily count for ${formatLongDate(date)}';
 // the owner's daily report (rule 10), plain html with tables, no attachments
 // on top: a brown header with the date, then 4 "at a glance" boxes
 // then the sections in this order:
-// 1 summary, 2 restock, 3 expected vs actual, 4 container checks, 5 no recipe yet,
-// 6 tally, 7 full count table, 8 day note and covered or closed days
-// an empty section still shows and says "None." so the owner knows it was checked
-// summary = bullet points from the ai or the template, the caller picks
+// 1 summary, 2 restock, 3 number items used vs expected, 4 container checks, 5 no recipe yet,
+// 6 orders today, 7 full count table, 8 day note and covered or closed days
+// an empty section is hidden, one "Nothing to flag: ..." line under the summary says which ones had nothing
+// the count table always shows
+// owner wording: "orders", never "tally" (the barista side keeps "Tally")
+// summary = the 5 parts from the ai or the template, the caller picks
 // fromAi = true when the ai wrote them, the email says which one the owner is reading
 String dailyEmailHtml(
   DailyReport report,
-  List<String> summary, {
+  SummaryParts summary, {
   required bool fromAi,
 }) {
   final day = report.day;
   final body = StringBuffer()
     ..write(_glance(report))
-    // 1 summary in a cream box with a caramel line on the left
-    ..writeln(
-      '<div style="background:$cream;border-left:3px solid $caramel;'
-      'padding:8px 12px;margin-top:16px;">',
-    )
-    ..write(bulletList(summary))
-    ..writeln('</div>')
-    ..writeln(
-      '<p style="margin:4px 0 0;font-size:11px;color:$textMuted;">'
-      '${fromAi ? "Summary written by AI from the app's numbers. The app checked every number." : 'Summary made by the app from its own numbers.'}'
-      '</p>',
-    );
+    ..write(_summaryHtml(summary, fromAi: fromAi))
+    ..write(_nothingMarker);
+  // what had nothing, for the "Nothing to flag" line, shown under the summary so it isnt missed
+  final nothing = <String>[];
 
-  // 2 restock recommended, with the End and the low level so the owner sees how low
-  body.write(
-    sectionTitle(
-      'Restock recommended',
-      hint: 'End is at or below the low-stock level.',
-    ),
-  );
+  // 2 restock recommended, with what is left and the low level so the owner sees how low
   final restock = report.restock;
   if (restock.isEmpty) {
-    body.write(paragraph('None.', muted: true));
+    nothing.add('no restock needed');
   } else {
     body
+      ..write(
+        sectionTitle(
+          'Restock recommended',
+          hint: 'What is left is at or below the low-stock level.',
+        ),
+      )
       ..writeln(tableOpen)
-      ..writeln(headerRow(['Item', 'End', 'Low level'], right: {1, 2}));
+      ..writeln(headerRow(['Item', 'Left', 'Low level'], right: {1, 2}));
     for (final row in restock) {
       body.writeln(
         tableRow(
-          [row.item.name, _endText(row), row.item.lowText],
+          [row.item.name, endText(row), row.item.lowText],
           right: {1, 2},
         ),
       );
@@ -62,26 +56,32 @@ String dailyEmailHtml(
     body.writeln('</table>');
   }
 
-  // 3 expected vs actual, items with recipes, notes under the name
-  // estimated items have no gap, an opening count has no numbers (rule 7)
-  body.write(
-    sectionTitle(
-      'Expected vs. actual',
-      hint:
-          'Expected = what the recipes say the tally used. '
-          'Gap = used − expected, + means more was used than the tally explains. '
-          'Items counted by level are estimated and have no gap, '
-          'see the container checks.',
-    ),
-  );
+  // 3 number items: used vs what today's orders explain, notes under the name (rule 7)
+  // container items are never here, they are compared by container checks
   final compared = report.compared;
   if (compared.isEmpty) {
-    body.write(paragraph('No counted item is in a recipe yet.', muted: true));
+    nothing.add('no counted pieces to compare with orders');
   } else {
     const right = {1, 2, 3};
     body
+      ..write(
+        sectionTitle(
+          'Used vs. expected (from orders)',
+          hint:
+              "Items counted in pieces. Based on today's orders, the expected "
+              'amount should have been used. Gap = used − expected, '
+              '+ means more was used than the orders explain.',
+        ),
+      )
       ..writeln(tableOpen)
-      ..writeln(headerRow(['Item', 'Used', 'Expected', 'Gap'], right: right));
+      ..writeln(
+        headerRow([
+          'Item',
+          'Used',
+          'Expected (from orders)',
+          'Gap',
+        ], right: right),
+      );
     for (final row in compared) {
       final item = row.item;
       body.writeln(
@@ -98,44 +98,47 @@ String dailyEmailHtml(
     body.writeln('</table>');
   }
 
-  // 4 container checks
-  body.write(
-    sectionTitle(
-      'Container checks',
-      hint:
-          'When a container is finished: what it held vs. what the recipes explain.',
-    ),
-  );
+  // 4 container checks, the only comparison for container items
   if (report.checks.isEmpty) {
-    body.write(paragraph('None. No container was finished.', muted: true));
+    nothing.add('no container finished');
   } else {
-    body.write(
-      bulletList([
-        for (final check in report.checks)
-          checkSentence(check, day.businessDate),
-      ]),
-    );
+    body
+      ..write(
+        sectionTitle(
+          'Container checks',
+          hint:
+              'When a container is finished: what it held vs. what the '
+              'orders since the last one explain.',
+        ),
+      )
+      ..write(
+        bulletList([
+          for (final check in report.checks)
+            checkSentence(check, day.businessDate),
+        ]),
+      );
   }
 
   // 5 no recipe yet
-  body.write(
-    sectionTitle(
-      'No recipe yet',
-      hint: 'Tallied menu items the app could not compare.',
-    ),
-  );
   if (report.noRecipe.isEmpty) {
-    body.write(paragraph('None.', muted: true));
-  } else {
-    body.write(paragraph('${report.noRecipe.join(', ')}.'));
-  }
-
-  // 6 tally, menu item + quantity only, never prices
-  body.write(sectionTitle('Tally', hint: 'Menu items made today.'));
-  if (report.tally.isEmpty) {
-    body.write(paragraph('None. Nothing was tallied.', muted: true));
+    nothing.add('every ordered item has a recipe');
   } else {
     body
+      ..write(
+        sectionTitle(
+          'No recipe yet',
+          hint: 'Ordered today but not compared, add a recipe for them.',
+        ),
+      )
+      ..write(paragraph('${report.noRecipe.join(', ')}.'));
+  }
+
+  // 6 orders today, menu item + quantity only, never prices
+  if (report.tally.isEmpty) {
+    nothing.add('no orders recorded');
+  } else {
+    body
+      ..write(sectionTitle('Orders today', hint: 'Menu items made today.'))
       ..writeln(tableOpen)
       ..writeln(headerRow(['Menu item', 'Qty'], right: {1}));
     for (final row in report.tally) {
@@ -144,7 +147,7 @@ String dailyEmailHtml(
     body.writeln('</table>');
   }
 
-  // 7 full count table
+  // 7 full count table, always shown, container items show their level change here (Start → End)
   body
     ..write(
       sectionTitle(
@@ -155,33 +158,83 @@ String dailyEmailHtml(
     ..write(countTableHtml(report.countRows));
 
   // 8 day note, covered dates, closed days
-  body.write(sectionTitle('Day note'));
   final note = day.dayNote;
-  if (note == null) {
-    body.write(paragraph('None.', muted: true));
-  } else {
-    body.writeln(
-      '<p style="margin:4px 0;font-size:14px;font-style:italic;">'
-      '“${htmlEscape.convert(note)}”</p>',
-    );
-  }
   final from = day.coversFrom;
-  if (from != null) {
-    body.write(
-      paragraph('This count covers ${formatCovers(from, day.businessDate)}.'),
-    );
+  if (note == null && from == null && report.closedDates.isEmpty) {
+    nothing.add('no day note');
+  } else {
+    body.write(sectionTitle('Day note'));
+    if (note != null) {
+      body.writeln(
+        '<p style="margin:4px 0;font-size:14px;font-style:italic;">'
+        '“${htmlEscape.convert(note)}”</p>',
+      );
+    }
+    if (from != null) {
+      body.write(
+        paragraph('This count covers ${formatCovers(from, day.businessDate)}.'),
+      );
+    }
+    if (report.closedDates.isNotEmpty) {
+      final dates = report.closedDates.map(formatShortDate).join(', ');
+      body.write(paragraph('Closed: $dates.'));
+    }
   }
-  if (report.closedDates.isNotEmpty) {
-    final dates = report.closedDates.map(formatShortDate).join(', ');
-    body.write(paragraph('Closed: $dates.'));
-  }
+
+  // the line goes in the spot kept for it under the summary, now that every section was looked at
+  final nothingLine = nothing.isEmpty
+      ? ''
+      : '<p style="margin:10px 0 0;font-size:13px;color:$textMuted;">'
+            'Nothing to flag: ${htmlEscape.convert(nothing.join(', '))}.</p>\n';
 
   return emailPage(
     label: 'BrewManager · Daily count',
     title: formatLongDate(day.businessDate),
     subtitle: _subtitle(report),
-    body: body.toString(),
+    body: body.toString().replaceFirst(_nothingMarker, nothingLine),
   );
+}
+
+// a spot kept under the summary for the "Nothing to flag" line, filled in at the end
+const String _nothingMarker = '<!--nothing-to-flag-->';
+
+// the summary on top: a title, then each part under its header, empty parts hidden
+// the "fine" part is a closing line with no header
+String _summaryHtml(SummaryParts summary, {required bool fromAi}) {
+  final html = StringBuffer()
+    ..writeln(
+      '<div style="background:$cream;border-left:3px solid $caramel;'
+      'padding:12px 14px;margin-top:16px;">',
+    )
+    ..writeln(
+      '<div style="font-size:17px;font-weight:bold;color:$espresso;">'
+      '${fromAi ? 'AI Summary' : 'Summary'}</div>',
+    );
+  final parts = summary.byKey;
+  for (final key in SummaryParts.headers.keys) {
+    final text = parts[key]!;
+    if (text.isEmpty) continue;
+    html.writeln(
+      '<div style="margin-top:10px;font-size:13px;font-weight:bold;'
+      'color:$caramel;">${htmlEscape.convert(SummaryParts.headers[key]!)}</div>'
+      '<p style="margin:2px 0 0;font-size:15px;line-height:1.5;">'
+      '${htmlEscape.convert(text)}</p>',
+    );
+  }
+  if (summary.fine.isNotEmpty) {
+    html.writeln(
+      '<p style="margin:10px 0 0;font-size:15px;line-height:1.5;">'
+      '${htmlEscape.convert(summary.fine)}</p>',
+    );
+  }
+  html
+    ..writeln('</div>')
+    ..writeln(
+      '<p style="margin:4px 0 0;font-size:11px;color:$textMuted;">'
+      '${fromAi ? "Written by AI from the app's numbers. The app checked every number." : 'Made by the app from its own numbers. The AI summary was not available.'}'
+      '</p>',
+    );
+  return html.toString();
 }
 
 // the small line under the date, like "Covers Oct 29–30 · Submitted 9:42pm"
@@ -197,7 +250,7 @@ String? _subtitle(DailyReport report) {
   return parts.isEmpty ? null : parts.join(' · ');
 }
 
-// the 4 boxes on top: items made, to restock, gaps, no recipe yet
+// the 4 boxes on top: items ordered, to restock, gaps, no recipe yet
 // the app counts these, a box is amber when it needs a look and is not 0
 String _glance(DailyReport report) {
   String box(String label, int value, {bool warn = false}) {
@@ -214,7 +267,7 @@ String _glance(DailyReport report) {
 
   return '<table width="100%" cellpadding="0" cellspacing="0" '
       'style="border-collapse:collapse;"><tr>'
-      '${box('Items made', report.madeTotal)}'
+      '${box('Items ordered', report.madeTotal)}'
       '${box('To restock', report.restock.length, warn: true)}'
       '${box('Gaps', gapRows(report).length, warn: true)}'
       '${box('No recipe yet', report.noRecipe.length, warn: true)}'
@@ -230,15 +283,4 @@ String _gapHtml(UsageRow row) {
   if (text == '0') return '<span style="color:$okText;">0</span>';
   return '<span style="background:$warnBg;color:$warnText;'
       'padding:2px 6px;white-space:nowrap;">$text</span>';
-}
-
-// End with about when it came from a level (rule 2)
-// container items show containers like the logbook, number items like "4 packs"
-String _endText(UsageRow row) {
-  final item = row.item;
-  final end = row.line.endQty;
-  final amount = item.countType == CountType.container
-      ? formatContainers(end / item.containerSize!, item.containerName)
-      : amountText(item, end);
-  return row.line.endIsExact ? amount : 'about $amount';
 }

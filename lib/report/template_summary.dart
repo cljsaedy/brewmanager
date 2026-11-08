@@ -1,119 +1,68 @@
 import '../logic/formatting.dart';
 import 'daily_report.dart';
 import 'report_text.dart';
+import 'summary_parts.dart';
 
-// most names a list in the summary shows, the rest is "and 3 more", the tables have them all
-// keeps the summary short (about 120 words like the ai one, rule 10)
-const int summaryListMax = 4;
+// the closing line when no number item has a gap
+const String allMatchedText = 'Everything else matched.';
 
 // the fill-in-the-blanks summary, built only from the app's own numbers (rule 10)
-// used when there is no ai summary: no internet, the call failed, or the ai numbers didnt match
-// gives back bullet points, 1 point each, the email shows them as a list
-// a bullet is left out when it has nothing to say
-// the date is not in here since the email header already shows it
-List<String> templateSummary(DailyReport report) {
-  final bullets = <String>[];
+// used when there is no ai summary: no internet, the call failed, or the ai answer didnt pass the checks
+// same 5 parts as the ai one so a fallback email reads the same way
+// a part is left empty when it has nothing to say, the email hides it
+// no thresholds: every gap that isnt 0 and every finished container is listed, the owner judges
+SummaryParts templateSummary(DailyReport report) {
+  final day = report.day;
+  final today = day.businessDate;
 
+  // today: orders, then anything about the day itself
+  final overview = <String>[];
   final made = report.madeTotal;
-  bullets.add(
+  overview.add(
     made == 0
-        ? 'Nothing was tallied.'
-        : '$made ${made == 1 ? 'menu item was' : 'menu items were'} tallied.',
+        ? 'No orders were recorded today.'
+        : '$made ${made == 1 ? 'menu item was' : 'menu items were'} ordered today.',
   );
-
-  final restock = report.restock;
-  bullets.add(
-    restock.isEmpty
-        ? 'No items need restocking.'
-        : 'Restock recommended: '
-              '${_list([for (final row in restock) row.item.name])}.',
-  );
-
-  // exact items with a gap that isnt 0, the ones that matched are only in the table
-  final gaps = gapRows(report);
-  final exactCompared = [
-    for (final row in report.compared)
-      if (row.gap != null) row,
-  ];
-  if (gaps.isNotEmpty) {
-    bullets.addAll([
-      for (final row in gaps.take(summaryListMax)) gapSentence(row),
-    ]);
-    if (gaps.length > summaryListMax) {
-      bullets.add(
-        '${gaps.length - summaryListMax} more gaps are in the table.',
-      );
-    }
-  } else if (exactCompared.isNotEmpty) {
-    bullets.add('Every exact item matched the recipes.');
-  }
-
-  final checks = report.checks;
-  bullets.addAll([
-    for (final check in checks.take(summaryListMax))
-      checkSentence(check, report.day.businessDate),
-  ]);
-  if (checks.length > summaryListMax) {
-    bullets.add(
-      '${checks.length - summaryListMax} more container checks are in the report.',
+  if (report.noRecipe.isNotEmpty) {
+    overview.add(
+      'Ordered with no recipe yet, so not compared: '
+      '${report.noRecipe.join(', ')}.',
     );
   }
-
-  if (report.noRecipe.isNotEmpty) {
-    bullets.add('No recipe yet: ${_list(report.noRecipe)}.');
+  final from = day.coversFrom;
+  if (from != null) {
+    overview.add('This count covers ${formatCovers(from, today)}.');
   }
-
+  if (report.closedDates.isNotEmpty) {
+    overview.add(
+      'Closed: ${report.closedDates.map(formatShortDate).join(', ')}.',
+    );
+  }
   final opening = [
     for (final row in report.usage)
       if (row.isOpening) row.item.name,
   ];
   if (opening.isNotEmpty) {
-    bullets.add(
-      'Opening count for ${_list(opening)}, comparing starts next count.',
+    overview.add(
+      'Opening count for ${opening.join(', ')}, comparing starts next count.',
     );
   }
+  if (day.dayNote != null) overview.add('Day note: “${day.dayNote}”.');
 
-  final from = report.day.coversFrom;
-  if (from != null) {
-    bullets.add(
-      'This count covers ${formatCovers(from, report.day.businessDate)}.',
-    );
-  }
+  final gaps = rankedGapRows(report);
 
-  if (report.closedDates.isNotEmpty) {
-    bullets.add(
-      'Closed: ${_list([for (final date in report.closedDates) formatShortDate(date)])}.',
-    );
-  }
-
-  if (report.day.dayNote != null) {
-    bullets.add('Day note: “${report.day.dayNote}”.');
-  }
-
-  return bullets;
-}
-
-// turns the ai text into bullet points (rule 10)
-// the ai is told to start every point with "- ", but this takes "* " and "• " too
-// any line without a mark still becomes its own bullet, so a plain paragraph is 1 bullet and nothing is lost
-// ** (markdown bold) is taken out since the email would show the stars as text
-List<String> summaryBullets(String text) {
-  final bullets = <String>[];
-  for (final rawLine in text.split('\n')) {
-    var line = rawLine.trim().replaceAll('**', '');
-    if (line.startsWith('- ') ||
-        line.startsWith('* ') ||
-        line.startsWith('• ')) {
-      line = line.substring(2).trim();
-    }
-    if (line.isNotEmpty) bullets.add(line);
-  }
-  return bullets;
-}
-
-// like "Milk, Cups, Beans and 2 more"
-String _list(List<String> names) {
-  if (names.length <= summaryListMax) return names.join(', ');
-  final shown = names.take(summaryListMax).join(', ');
-  return '$shown and ${names.length - summaryListMax} more';
+  return SummaryParts(
+    overview: overview.join(' '),
+    // every number item whose gap isnt 0, biggest first, each with its note
+    gaps: [for (final row in gaps) gapSentence(row)].join(' '),
+    restock: [for (final row in report.restock) restockSentence(row)].join(' '),
+    // every finished container, what it held vs what the orders explain
+    containers: [
+      for (final check in report.checks) checkSentence(check, today),
+    ].join(' '),
+    // only true when something was compared and nothing had a gap
+    fine: gaps.isEmpty && report.compared.any((row) => row.gap != null)
+        ? allMatchedText
+        : '',
+  );
 }

@@ -30,10 +30,33 @@ const StockItem friesPack = StockItem(
 
 // nov 1: opening count of 8 fries
 // nov 2: 5 left, 2 french fries tallied: used 3, expected 2, gap 1, restock (5 is at the low level)
-const String goodText =
-    'On Mon, Nov 2, 2 menu items were tallied. Fries pack used 3 packs '
-    'against 2 expected, a gap of 1 pack, and is down to 5 packs, so a '
-    'restock is recommended.';
+final String goodText = aiJson(
+  overview: 'On Mon, Nov 2, 2 menu items were ordered.',
+  gaps:
+      "Fries pack used 3 packs, but based on today's orders 2 packs should "
+      'have been used, 1 pack more. No note explains it.',
+  restock: 'Fries pack is down to 5 packs, at its low level of 5 packs.',
+);
+
+// an ai answer in the 5-part json shape, empty parts unless given
+String aiJson({
+  String overview = '',
+  String gaps = '',
+  String restock = '',
+  String containers = '',
+  String fine = '',
+}) {
+  return jsonEncode({
+    'overview': overview,
+    'gaps': gaps,
+    'restock': restock,
+    'containers': containers,
+    'fine': fine,
+  });
+}
+
+// an answer with 1 wrong number (4 is in no fact)
+final String wrongNumber = aiJson(gaps: 'Fries pack used 4 packs.');
 
 void main() {
   late Database db;
@@ -123,7 +146,7 @@ void main() {
     expect(await savedOutcome(), isNull);
 
     final cases = <http.Client, String>{
-      groqSays('Fries pack used 4 packs.'): 'check_failed',
+      groqSays(wrongNumber): 'check_failed',
       MockClient((_) async => http.Response('busy', 429)): 'call_failed',
       groqSays(goodText): 'ai',
     };
@@ -168,12 +191,8 @@ void main() {
     ).improve(dayId);
     expect(await lastTry(), contains('HTTP 401'));
 
-    await AiSummary(
-      db,
-      keys,
-      groqSays('Fries pack used 4 packs.'),
-    ).improve(dayId);
-    expect(await lastTry(), 'check failed: did not match: 4');
+    await AiSummary(db, keys, groqSays(wrongNumber)).improve(dayId);
+    expect(await lastTry(), 'check failed: did not match: 4 (in gaps)');
 
     await AiSummary(db, keys, groqSays(goodText)).improve(dayId);
     expect(await lastTry(), 'ai');
@@ -196,10 +215,12 @@ void main() {
     ).improve(dayId);
 
     expect(outcome, SummaryOutcome.ai);
-    expect(await emailBody(), contains('a gap of 1 pack'));
+    expect(await emailBody(), contains('Fries pack used 3 packs'));
+    expect(await emailBody(), contains('>AI Summary</div>'));
+    // the template text is gone
     expect(
       await emailBody(),
-      isNot(contains('menu items were tallied. Restock')),
+      isNot(contains('menu items were ordered today.')),
     );
     expect(await source(), 'ai');
   });
@@ -208,11 +229,11 @@ void main() {
     final outcome = await AiSummary(
       db,
       keys,
-      groqSays('Fries pack used 4 packs.'),
+      groqSays(wrongNumber),
     ).improve(dayId);
 
     expect(outcome, SummaryOutcome.checkFailed);
-    expect(await emailBody(), contains('2 menu items were tallied.'));
+    expect(await emailBody(), contains('2 menu items were ordered today.'));
     expect(await source(), 'template');
   });
 
@@ -220,7 +241,7 @@ void main() {
     final outcome = await AiSummary(
       db,
       keys,
-      groqSays('Fries pack used three packs, two were expected.'),
+      groqSays(aiJson(gaps: 'Fries pack used three packs.')),
     ).improve(dayId);
 
     expect(outcome, SummaryOutcome.checkFailed);
@@ -284,17 +305,74 @@ void main() {
 
     final body = jsonDecode(sentBody!) as Map<String, dynamic>;
     final facts = jsonDecode(body['messages'][1]['content'] as String);
-    expect(facts['menu_items_tallied'], 2);
-    expect(facts['exact_items'], [
+    expect(facts['menu_items_ordered_today'], 2);
+    expect(facts['gaps'], [
       {
         'item': 'Fries pack',
-        'used': 3,
-        'expected': 2,
-        'gap': 1,
         'unit': 'packs',
+        'used': 3,
+        'expected_from_orders': 2,
+        'gap': 1,
+        'gap_is': 'more used than orders explain',
+        'note': null,
       },
     ]);
+    // there is a gap, so no closing line
+    expect(facts['closing_line'], '');
+    // the barista word never reaches the ai
+    expect(body['messages'][1]['content'], isNot(contains('tall')));
     expect(sentBody, isNot(contains('987')));
     expect(sentBody!.toLowerCase(), isNot(contains('price')));
+  });
+
+  test('an answer that is not the json shape keeps the template', () async {
+    for (final text in ['Fries pack used 3 packs.', '{"overview": 3}']) {
+      final outcome = await AiSummary(db, keys, groqSays(text)).improve(dayId);
+
+      expect(outcome, SummaryOutcome.checkFailed);
+      expect(
+        await lastTry(),
+        startsWith('check failed: not the summary shape'),
+      );
+      expect(await source(), 'template');
+    }
+  });
+
+  test('the word tally keeps the template', () async {
+    final outcome = await AiSummary(
+      db,
+      keys,
+      groqSays(aiJson(overview: '2 menu items were tallied.')),
+    ).improve(dayId);
+
+    expect(outcome, SummaryOutcome.checkFailed);
+    expect(await lastTry(), contains('tally'));
+  });
+
+  test('markdown or bullets keep the template', () async {
+    for (final text in [
+      '**Fries pack** used 3 packs.',
+      '- Fries pack used 3 packs.',
+      '# Today',
+    ]) {
+      final outcome = await AiSummary(
+        db,
+        keys,
+        groqSays(aiJson(gaps: text)),
+      ).improve(dayId);
+
+      expect(outcome, SummaryOutcome.checkFailed);
+      expect(await lastTry(), contains('markdown'));
+    }
+  });
+
+  test('a dash inside a sentence is fine', () async {
+    final outcome = await AiSummary(
+      db,
+      keys,
+      groqSays(aiJson(overview: 'A calm day - 2 menu items were ordered.')),
+    ).improve(dayId);
+
+    expect(outcome, SummaryOutcome.ai);
   });
 }

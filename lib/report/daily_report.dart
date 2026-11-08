@@ -1,6 +1,7 @@
 import '../data/count_line.dart';
 import '../data/stock_item.dart';
 import '../data/tally_store.dart';
+import '../logic/units.dart';
 
 // one stock item's numbers of a submitted day, from day_results + its count line (rule 7)
 class UsageRow {
@@ -79,10 +80,12 @@ class DailyReport {
       if (row.restock) row,
   ];
 
-  // the expected vs actual table: items in a recipe
+  // the used vs expected table: number items in a recipe (rule 7)
+  // container items are left out even if old saved days have a gap for them,
+  // they are only compared by container checks
   List<UsageRow> get compared => [
     for (final row in usage)
-      if (row.hasRecipe) row,
+      if (row.hasRecipe && row.item.countType == CountType.number) row,
   ];
 
   // the full count table, same rows as history

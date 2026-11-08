@@ -32,7 +32,7 @@ bool actualIsExact({required bool startIsExact, required bool endIsExact}) {
   return startIsExact && endIsExact;
 }
 
-// actual - expected, positive = more used than the tally explains, negative = less (rule 7)
+// actual - expected, positive = more used than today's orders explain, negative = less (rule 7)
 // null when it cant be shown:
 // - no actual (opening count)
 // - no expected (item in no recipe)
@@ -67,6 +67,9 @@ class DayUsage {
 }
 
 // works out all the results of one stock item on one day
+// only number items get a daily gap (rule 7), they are counted exact every day
+// container items never get a daily gap, even with a typed exact amount, their expected is still saved
+// since the container check adds up those daily expected numbers until a container is finished
 // inRecipe = the item is in at least 1 recipe, even if nothing using it was tallied today
 // that is why expected can be 0 here (in a recipe, nothing tallied) or null (in no recipe)
 // an opening count gets no expected too, its count comes after that day's sales so they cant be compared
@@ -83,6 +86,7 @@ DayUsage dayUsage({
   required LowMode lowMode,
   required double lowValue,
   required double? containerSize,
+  required CountType countType,
 }) {
   final restockFlag = isAtLowLevel(
     end: end,
@@ -112,7 +116,9 @@ DayUsage dayUsage({
     expected: expected,
     actual: actual,
     actualIsExact: isExact,
-    gap: gapOf(actual: actual, expected: expected, isExact: isExact),
+    gap: countType == CountType.number
+        ? gapOf(actual: actual, expected: expected, isExact: isExact)
+        : null,
     restockFlag: restockFlag,
   );
 }

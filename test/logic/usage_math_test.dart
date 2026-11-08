@@ -80,6 +80,7 @@ void main() {
         lowMode: LowMode.exact,
         lowValue: 5,
         containerSize: null,
+        countType: CountType.number,
       );
     }
 
@@ -94,6 +95,27 @@ void main() {
       expect(result.expected, 4);
       expect(result.actualIsExact, isTrue);
       expect(result.gap, 3);
+    });
+
+    test('a container item gets no daily gap, exact or not', () {
+      final result = dayUsage(
+        start: 3000,
+        startIsExact: true,
+        inQty: 0,
+        end: 2500,
+        endIsExact: true,
+        isOpening: false,
+        inRecipe: true,
+        uses: const [RecipeUse(menuQty: 2, amount: 100)],
+        lowMode: LowMode.containers,
+        lowValue: 1,
+        containerSize: 2000,
+        countType: CountType.container,
+      );
+
+      expect(result.actual, 500);
+      expect(result.expected, 200);
+      expect(result.gap, isNull);
     });
 
     test('an estimated start or end gives no gap but keeps both numbers', () {
@@ -158,6 +180,7 @@ void main() {
         lowMode: LowMode.containers,
         lowValue: 2,
         containerSize: 2000,
+        countType: CountType.container,
       );
 
       expect(result.restockFlag, isTrue);
@@ -403,11 +426,14 @@ void main() {
       lowMode: LowMode.containers,
       lowValue: 1,
       containerSize: 2000,
+      countType: CountType.container,
     );
 
     expect(result.actual, 800);
     expect(result.expected, 750);
-    expect(result.gap, 50);
+    // a container item never gets a daily gap, even exact both ends (rule 7)
+    // the expected is still saved for the container check
+    expect(result.gap, isNull);
     expect(result.restockFlag, isFalse);
   });
 }

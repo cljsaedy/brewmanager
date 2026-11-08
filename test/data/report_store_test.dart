@@ -13,6 +13,7 @@ import 'package:brewmanager/logic/count_math.dart';
 import 'package:brewmanager/logic/units.dart';
 import 'package:brewmanager/report/daily_email.dart';
 import 'package:brewmanager/report/report_text.dart';
+import 'package:brewmanager/report/summary_parts.dart';
 import 'package:brewmanager/report/template_summary.dart';
 
 import '../helpers/test_database.dart';
@@ -149,57 +150,76 @@ void main() {
     test('the sentences', () async {
       final report = await ReportStore(db).load(await submitNov2());
       final fries = report.usage.firstWhere((row) => row.item.id == friesId);
-      final syrupRow = report.usage.firstWhere((row) => row.item.id == syrupId);
 
       expect(
         gapSentence(fries),
-        'Fries pack: 1 pack more used than the tally explains.',
+        "Fries pack: based on today's orders, 2 packs should have been used, "
+        '3 packs were used (1 pack more). No note explains it.',
       );
       expect(gapCell(fries.item, fries.gap!), '+1 pack');
-      expect(usedCell(syrupRow), 'about 1,000 ml (estimated)');
-      expect(
-        estimatedSentence(syrupRow),
-        'Caramel syrup: about 1,000 ml used (estimated from bottle level). '
-        'Recipes expect 300 ml.',
-      );
+      // held vs what the orders explain, no judging
       expect(
         checkSentence(report.checks.single, '2026-11-02'),
         'Caramel syrup: 1 bottle (1,000 ml) finished. '
-        'Recipes explain 300 ml since Nov 1.',
+        'Based on orders since Nov 1, 300 ml should have been used.',
+      );
+    });
+
+    test('no gaps: the closing line says everything else matched', () async {
+      // 6 fries left: used 2, the 2 french fries ordered explain 2
+      final day = await counts.loadDraft();
+      await counts.saveNumberCount(rowOf(day, friesId).line.id, 6);
+      final report = await ReportStore(db).load(await submitNov2());
+      final summary = templateSummary(report);
+
+      expect(summary.gaps, '');
+      expect(summary.fine, 'Everything else matched.');
+    });
+
+    test('a note is linked with careful words, no note says so', () {
+      expect(
+        noteSentence('1 pck expired'),
+        'Staff noted “1 pck expired”, which may explain part of it.',
+      );
+      expect(noteSentence(null), 'No note explains it.');
+    });
+
+    test('only number items are compared daily (rule 7)', () async {
+      final report = await ReportStore(db).load(await submitNov2());
+
+      expect(
+        [for (final row in report.compared) row.item.name],
+        ['Fries pack'],
       );
     });
 
     test('the template summary', () async {
       final report = await ReportStore(db).load(await submitNov2());
+      final summary = templateSummary(report);
 
-      expect(templateSummary(report), [
-        '14 menu items were tallied.',
-        'Restock recommended: Fries pack.',
-        'Fries pack: 1 pack more used than the tally explains.',
-        'Caramel syrup: 1 bottle (1,000 ml) finished. '
-            'Recipes explain 300 ml since Nov 1.',
-        'No recipe yet: Waffle.',
-        'Day note: “power <b>outage</b> at 3pm”.',
-      ]);
-    });
-
-    test('the ai text becomes bullets', () {
       expect(
-        summaryBullets(
-          '- **14** menu items were tallied.\n\n'
-          '* Fries pack is low.\n'
-          '• Waffle has no recipe yet.\n'
-          'A line with no mark.',
-        ),
-        [
-          '14 menu items were tallied.',
-          'Fries pack is low.',
-          'Waffle has no recipe yet.',
-          'A line with no mark.',
-        ],
+        summary.overview,
+        '14 menu items were ordered today. '
+        'Ordered with no recipe yet, so not compared: Waffle. '
+        'Day note: “power <b>outage</b> at 3pm”.',
       );
-      // a plain paragraph is 1 bullet, nothing is lost
-      expect(summaryBullets('One. Two.'), ['One. Two.']);
+      expect(
+        summary.gaps,
+        "Fries pack: based on today's orders, 2 packs should have been used, "
+        '3 packs were used (1 pack more). No note explains it.',
+      );
+      expect(summary.restock, 'Fries pack: 5 packs left (low level 5 packs).');
+      expect(
+        summary.containers,
+        'Caramel syrup: 1 bottle (1,000 ml) finished. '
+        'Based on orders since Nov 1, 300 ml should have been used.',
+      );
+      // there is a gap, so no closing line
+      expect(summary.fine, '');
+      // owner wording only
+      for (final text in summary.byKey.values) {
+        expect(text.toLowerCase(), isNot(contains('tally')));
+      }
     });
   });
 
@@ -215,7 +235,7 @@ void main() {
       expect(email['subject'], 'Daily count for Mon, Nov 2');
       expect(email['status'], 'queued');
       final html = email['html_body'] as String;
-      expect(html, contains('14 menu items were tallied.'));
+      expect(html, contains('14 menu items were ordered today.'));
 
       final day = (await db.query(
         'business_days',
@@ -242,12 +262,12 @@ void main() {
       );
 
       final titles = [
-        '14 menu items were tallied.',
+        '>Summary</div>',
         'Restock recommended</h3>',
-        'Expected vs. actual</h3>',
+        'Used vs. expected (from orders)</h3>',
         'Container checks</h3>',
         'No recipe yet</h3>',
-        'Tally</h3>',
+        'Orders today</h3>',
         'Count</h3>',
         'Day note</h3>',
       ];
@@ -256,23 +276,24 @@ void main() {
       expect(places, orderedEquals([...places]..sort()));
     });
 
-    test('estimated items have no gap, exact ones do', () async {
+    test('only number items are in the used vs expected table', () async {
       final report = await ReportStore(db).load(await submitNov2());
       // the cells as text, like "Fries pack|3 packs|2 packs|+1 pack|"
       final cells = cellText(
-        dailyEmailHtml(report, ['summary'], fromAi: false),
+        dailyEmailHtml(report, templateSummary(report), fromAi: false),
       );
 
-      expect(
-        cells,
-        contains('Caramel syrup|about 1,000 ml (estimated)|300 ml|—|'),
-      );
       expect(cells, contains('Fries pack|3 packs|2 packs|+1 pack|'));
+      expect(cells, isNot(contains('Caramel syrup|about')));
     });
 
     test('notes are escaped so they cant break the email', () async {
       final report = await ReportStore(db).load(await submitNov2());
-      final html = dailyEmailHtml(report, ['summary'], fromAi: false);
+      final html = dailyEmailHtml(
+        report,
+        templateSummary(report),
+        fromAi: false,
+      );
 
       expect(html, contains('power &lt;b&gt;outage&lt;&#47;b&gt; at 3pm'));
       expect(html, isNot(contains('<b>outage')));
@@ -289,6 +310,81 @@ void main() {
       expect(html, isNot(contains('₱')));
       expect(html.toLowerCase(), isNot(contains('price')));
     });
+
+    test('the owner never reads the word tally', () async {
+      final report = await ReportStore(db).load(await submitNov2());
+      final html = dailyEmailHtml(
+        report,
+        templateSummary(report),
+        fromAi: false,
+      );
+
+      expect(html.toLowerCase(), isNot(contains('tally')));
+      expect(html, contains('Expected (from orders)'));
+    });
+
+    test('empty sections are hidden with 1 nothing to flag line', () async {
+      // a quiet day: nothing ordered, nothing finished, no day note
+      final day = await counts.loadDraft();
+      await db.delete(
+        'tally_lines',
+        where: 'day_id = ?',
+        whereArgs: [day.day.id],
+      );
+      await db.delete(
+        'stock_events',
+        where: 'day_id = ?',
+        whereArgs: [day.day.id],
+      );
+      await db.update(
+        'count_lines',
+        {'out_count': 0},
+        where: 'day_id = ?',
+        whereArgs: [day.day.id],
+      );
+      await counts.saveDayNote(day.day.id, '');
+      await counts.submits.submit(day.day.id, date: '2026-11-02');
+      final report = await ReportStore(db).load(day.day.id);
+      final html = dailyEmailHtml(
+        report,
+        templateSummary(report),
+        fromAi: false,
+      );
+
+      expect(html, isNot(contains('Container checks</h3>')));
+      expect(html, isNot(contains('Orders today</h3>')));
+      expect(html, isNot(contains('Day note</h3>')));
+      expect(html, contains('Nothing to flag: '));
+      expect(html, contains('no container finished'));
+      expect(html, contains('no orders recorded'));
+      // the count table always shows
+      expect(html, contains('Count</h3>'));
+    });
+
+    test(
+      'the ai summary shows its title and headers, empty parts hidden',
+      () async {
+        final report = await ReportStore(db).load(await submitNov2());
+        final html = dailyEmailHtml(
+          report,
+          const SummaryParts(
+            overview: 'A quiet day.',
+            gaps: '',
+            restock: 'Fries pack is low.',
+            containers: '',
+            fine: 'Everything else looks fine.',
+          ),
+          fromAi: true,
+        );
+
+        expect(html, contains('>AI Summary</div>'));
+        expect(html, contains('>Today</div>'));
+        expect(html, contains('>Restock</div>'));
+        // the summary header, not the gaps box on top
+      expect(html, isNot(contains('color:#C8873A;">Gaps</div>')));
+        expect(html, contains('Everything else looks fine.'));
+      },
+    );
   });
 
   group('history stays right', () {
@@ -314,7 +410,7 @@ void main() {
       expect(fries.isOpening, isTrue);
       expect(usedCell(fries), openingText);
       expect(
-        templateSummary(report),
+        templateSummary(report).overview,
         contains(
           // by category then name, Food comes before Syrups
           'Opening count for Fries pack, Caramel syrup, '
@@ -335,7 +431,10 @@ void main() {
 
       final report = await ReportStore(db).load(day.day.id);
       expect(report.closedDates, ['2026-11-02', '2026-11-03']);
-      expect(templateSummary(report), contains('Closed: Nov 2, Nov 3.'));
+      expect(
+        templateSummary(report).overview,
+        contains('Closed: Nov 2, Nov 3.'),
+      );
     });
 
     test('open skipped days show what the count covers', () async {
@@ -344,7 +443,10 @@ void main() {
 
       final report = await ReportStore(db).load(day.day.id);
       expect(report.closedDates, isEmpty);
-      expect(templateSummary(report), contains('This count covers Nov 2–3.'));
+      expect(
+        templateSummary(report).overview,
+        contains('This count covers Nov 2–3.'),
+      );
     });
   });
 }

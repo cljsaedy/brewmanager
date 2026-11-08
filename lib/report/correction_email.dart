@@ -33,8 +33,13 @@ class CorrectionEntry {
   // the stock item of a count line, so its amounts can show in containers
   final StockItem? item;
 
-  // like "Caramel syrup End 2.5 → 3 bottles"
-  String get description {
+  // like "Caramel syrup End 2.5 → 3 bottles", the barista's history tab shows this one
+  String get description => _describe(tallyWord: 'tally');
+
+  // the same for the owner's email, the owner reads "orders" instead of "tally"
+  String get ownerDescription => _describe(tallyWord: 'orders');
+
+  String _describe({required String tallyWord}) {
     switch (field) {
       case 'end':
         return '$name End ${_amountChange()}';
@@ -45,7 +50,7 @@ class CorrectionEntry {
       case 'note':
         return '$name note ${_textChange()}';
       case 'qty':
-        return '$name tally $oldValue → $newValue';
+        return '$name $tallyWord $oldValue → $newValue';
       default:
         return 'Day note ${_textChange()}';
     }
@@ -98,7 +103,7 @@ String correctionEmailHtml({
     ..write(
       bulletList([
         for (final change in changes)
-          '${change.description}. Reason: ${change.reason}.',
+          '${change.ownerDescription}. Reason: ${change.reason}.',
       ]),
     )
     ..write(

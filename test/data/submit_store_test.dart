@@ -350,7 +350,8 @@ void main() {
       final result = await resultOf(dayId, syrupId);
       expect(result['actual_qty'], 750);
       expect(result['expected_qty'], 750);
-      expect(result['gap'], 0);
+      // syrup is a container item, it never gets a daily gap even with exact counts (rule 7)
+      expect(result['gap'], isNull);
     });
 
     test('in a recipe with nothing tallied expects 0', () async {

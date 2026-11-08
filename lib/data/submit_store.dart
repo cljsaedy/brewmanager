@@ -337,6 +337,7 @@ class SubmitStore {
         lowMode: item.lowMode,
         lowValue: item.lowValue,
         containerSize: item.containerSize,
+        countType: item.countType,
       );
       await txn.insert('day_results', {
         'day_id': dayId,

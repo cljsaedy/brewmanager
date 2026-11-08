@@ -17,29 +17,69 @@ const String groqModel = 'openai/gpt-oss-120b';
 const String groqReasoningEffort = 'low';
 
 // the longest the app waits for groq, after this the template summary is used
-const Duration groqTimeout = Duration(seconds: 20);
+// 30 s since the answer is now 5 paragraphs, still short enough that submit doesnt feel stuck
+const Duration groqTimeout = Duration(seconds: 30);
 
-// groq's default length, the thinking may count toward it so 400 could leave no room for the answer
-// the summary itself stays short, "at most 120 words" is in the instructions
-const int groqMaxTokens = 1024;
+// the most the answer can be, the thinking counts toward it too
+// no word limit for the summary itself (it writes what the day needs), this only stops a long day getting cut off halfway
+const int groqMaxTokens = 2500;
 
-// what the model is told, rule 10 plus the digits rule so the number check can trust every number
+// 0 = always the same words, higher = more natural but less the same each time
+// 0.2 reads less stiff and the same day still gives about the same text, which helps the evaluation
+// the number check guards the numbers whatever this is
+const double groqTemperature = 0.2;
+
+// the shape the answer must have, groq's strict structured outputs make the model follow it exactly
+// docs: https://console.groq.com/docs/structured-outputs (gpt-oss-120b supports strict mode)
+// strict needs every field in required and no extra fields
+const Map<String, Object> summarySchema = {
+  'type': 'object',
+  'properties': {
+    'overview': {'type': 'string'},
+    'gaps': {'type': 'string'},
+    'restock': {'type': 'string'},
+    'containers': {'type': 'string'},
+    'fine': {'type': 'string'},
+  },
+  'required': ['overview', 'gaps', 'restock', 'containers', 'fine'],
+  'additionalProperties': false,
+};
+
+// what the model is told (rule 10)
+// the app already picked what goes in each part and in what order, the model only puts it into words
+// no thresholds: every gap and every finished container is in the facts, the owner judges them
 const String groqInstructions = '''
-You write a short daily stock summary for the owner of a small cafe.
-The user message is a JSON list of facts. The app already worked out every number.
+You write the daily stock summary for the owner of a small cafe, like a manager
+telling the owner what happened today.
+The user message is JSON facts. The app already worked out every number and
+already put every list in order.
+
+Answer with JSON only, with these 5 fields. Each field is a short plain
+paragraph, or an empty string when its list is empty:
+- overview: what happened today: how many menu items were ordered, menu items
+  ordered with no recipe yet, covered or closed days, opening counts and the
+  day note if present.
+- gaps: every item in "gaps", in the order given. For each say the item name
+  first, what was used, what today's orders explain, and the gap. Example:
+  Wings used 6 pcs, but based on today's orders 4 pcs should have been used,
+  2 pcs more. If the item has a note, quote it and say it may explain part of
+  it, for example: Staff noted "1 pck expired", which may explain part of it.
+  If there is no note, say no note explains it.
+- restock: every item in "restock", with what is left and the low level.
+- containers: every item in "containers_finished": how much was finished and
+  how much the orders since that date explain. Do not judge or compare them.
+- fine: copy "closing_line" exactly (it may be empty).
 
 Rules:
-- Use only the facts given. Do not add anything that is not in them.
-- Every number you write must be copied exactly from the facts, as digits (write 3, not three).
-- Never write a number as a word. Never round, estimate, add, subtract or convert a number.
-- Notes are quoted word for word in double quotes. Never guess a reason or a cause.
-- For estimated items, say "about" and do not call the difference a gap.
-- Mention, if present: restock items, exact items with a gap, container checks,
-  menu items with no recipe yet, opening counts, closed days, and the day note.
-- Plain English, at most 120 words in all.
-- Write 3 to 6 short bullet points, one point per bullet.
-  Start every bullet on its own line with "- ". Most important first: restock, gaps, container checks.
-- Nothing before or after the bullets. No headings, bold or other markdown.
+- Use only the facts given. Do not mention items that are not in these lists.
+- Every number you write must be copied exactly from the facts, as digits
+  (write 3, not three). Never write a number as a word. Never round, estimate,
+  add, subtract or convert a number. Never work out a new number, for example
+  never say how much a note does not explain.
+- A note is never the cause. Never guess a reason.
+- Say "orders" or "today's orders". Never use the word "tally".
+- Plain sentences only. No markdown, no bullet points, no symbols like * or #.
+- Write as much as the day needs and no more. Do not repeat every table row.
 ''';
 
 // when groq answers with an error, or the answer has no text in it
@@ -70,12 +110,20 @@ class GroqClient {
           },
           body: jsonEncode({
             'model': groqModel,
-            // 0 = always the most likely words, the same facts give the same text
-            'temperature': 0,
+            'temperature': groqTemperature,
             'max_completion_tokens': groqMaxTokens,
             'reasoning_effort': groqReasoningEffort,
             // false = the thinking is left out of the answer, only message.content is used anyway
             'include_reasoning': false,
+            // the answer must be json in the summary shape, see summarySchema
+            'response_format': {
+              'type': 'json_schema',
+              'json_schema': {
+                'name': 'daily_summary',
+                'strict': true,
+                'schema': summarySchema,
+              },
+            },
             'messages': [
               {'role': 'system', 'content': groqInstructions},
               {'role': 'user', 'content': factsJson},
