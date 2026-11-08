@@ -15,25 +15,6 @@ import 'submit_widgets.dart';
 // the 3 steps of a submit
 enum _Step { review, date, done }
 
-// a date with its weekday, like "Fri, Oct 30"
-String _longDate(String date) {
-  return DateFormat('EEE, MMM d').format(DateTime.parse(date));
-}
-
-// a date without its weekday, like "Oct 30"
-String _shortDate(String date) {
-  return DateFormat('MMM d').format(DateTime.parse(date));
-}
-
-// the dates a count covers, like "Oct 29–30" or "Oct 31–Nov 2" over the end of a month
-String _coversText(String from, String to) {
-  final sameMonth = from.substring(0, 7) == to.substring(0, 7);
-  final end = sameMonth
-      ? DateFormat('d').format(DateTime.parse(to))
-      : _shortDate(to);
-  return '${_shortDate(from)}–$end';
-}
-
 // the barista's submit: review the day, confirm the date, then see it was submitted (rule 4 and 5)
 // no expected numbers anywhere here, they stay in the owner section
 class SubmitScreen extends StatefulWidget {
@@ -125,7 +106,7 @@ class _SubmitScreenState extends State<SubmitScreen> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Was the cafe open on those days?'),
         content: Text(
-          '${dates.map(_shortDate).join(', ')}\n\n'
+          '${dates.map(formatShortDate).join(', ')}\n\n'
           'Yes: this count covers those days too.\n'
           'No: those days are saved as closed.',
         ),
@@ -216,7 +197,7 @@ class _SubmitScreenState extends State<SubmitScreen> {
     return _frame(
       header: SubmitHeader(
         title: 'Review the day',
-        subtitle: _longDate(_draftDate),
+        subtitle: formatLongDate(_draftDate),
         stepIndex: 0,
         actions: [
           OutlinedButton(onPressed: _close, child: const Text('Back to count')),
@@ -428,7 +409,7 @@ class _SubmitScreenState extends State<SubmitScreen> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          'Submit count for ${_longDate(_chosenDate)}?',
+          'Submit count for ${formatLongDate(_chosenDate)}?',
           style: const TextStyle(
             fontSize: 26,
             height: 1.2,
@@ -444,8 +425,8 @@ class _SubmitScreenState extends State<SubmitScreen> {
           const SizedBox(height: 12),
           Text(
             _skippedDaysOpen
-                ? 'Covers ${_coversText(_draftDate, _chosenDate)}'
-                : 'Closed: ${skipped.map(_shortDate).join(', ')}',
+                ? 'Covers ${formatCovers(_draftDate, _chosenDate)}'
+                : 'Closed: ${skipped.map(formatShortDate).join(', ')}',
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
         ],
@@ -471,7 +452,7 @@ class _SubmitScreenState extends State<SubmitScreen> {
     return _frame(
       header: SubmitHeader(
         title: 'Day submitted',
-        subtitle: _longDate(_chosenDate),
+        subtitle: formatLongDate(_chosenDate),
         stepIndex: 2,
         actions: [
           FilledButton(
@@ -508,7 +489,7 @@ class _SubmitScreenState extends State<SubmitScreen> {
               ),
               const SizedBox(height: 14),
               Text(
-                'Submitted ${_longDate(_chosenDate)}',
+                'Submitted ${formatLongDate(_chosenDate)}',
                 textAlign: TextAlign.center,
                 style: text.headlineSmall,
               ),

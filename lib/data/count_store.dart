@@ -7,6 +7,7 @@ import '../logic/clock.dart';
 import '../logic/count_math.dart';
 import '../logic/units.dart';
 import 'count_line.dart';
+import 'history_store.dart';
 import 'stock_item.dart';
 import 'submit_store.dart';
 import 'tally_store.dart';
@@ -23,6 +24,9 @@ class CountStore {
 
   // the submit of the same days, it uses this same db and clock
   SubmitStore get submits => SubmitStore(_db, clock: _clock);
+
+  // the past days for the history tab, it uses this same db
+  HistoryStore get history => HistoryStore(_db);
 
   // today's date on the tablet
   String get today => dateText(_clock().toLocal());

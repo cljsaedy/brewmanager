@@ -5,11 +5,11 @@ import '../data/count_line.dart';
 import '../data/count_store.dart';
 import '../data/database_helper.dart';
 import '../data/owner_pin_store.dart';
+import '../history/history_tab.dart';
 import '../owner/create_pin_screen.dart';
 import '../owner/enter_pin_screen.dart';
 import '../submit/submit_screen.dart';
 import '../tally/tally_tab.dart';
-import '../widgets/placeholder_tab.dart';
 import 'day_note_dialog.dart';
 import 'side_rail.dart';
 import 'top_bar.dart';
@@ -231,9 +231,12 @@ class _AppLayoutState extends State<AppLayout> with RouteAware {
                             store: _countStore?.tally,
                             onChanged: _loadDraft,
                           ),
-                          const PlaceholderTab(
-                            title: 'History tab',
-                            note: 'Submitted days come in Feature 8.',
+                          // starts fresh after each submit (new draft id) and after the owner section
+                          HistoryTab(
+                            key: ValueKey(
+                              '$_countTabVersion-${_draft?.day.id}',
+                            ),
+                            store: _countStore?.history,
                           ),
                         ],
                       ),

@@ -2,12 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../data/count_line.dart';
 import '../data/count_store.dart';
-import '../logic/count_math.dart';
-import '../logic/formatting.dart';
-import '../logic/units.dart';
 import '../theme/app_theme.dart';
 import '../widgets/category_title.dart';
 import 'count_badges.dart';
+import 'count_cells.dart';
 import 'count_panel.dart';
 
 // which rows the table shows
@@ -368,18 +366,10 @@ class _CountTabState extends State<CountTab> {
     );
   }
 
-  // one logbook row
-  // container items show in containers since that is how the barista thinks ("2.75"), rule 1
-  // number items show in pcs
+  // one logbook row, count_cells.dart decides what each cell says
   Widget _row(CountRow row) {
     final line = row.line;
     final item = row.item;
-    final isContainer = item.countType == CountType.container;
-
-    // a base amount turned into what this row shows, 5500 ml on a 2000 ml bottle = "2.75"
-    String shown(double amount) {
-      return formatAmount(isContainer ? amount / item.containerSize! : amount);
-    }
 
     // Material + InkWell = tap ripple, the open row gets a cream background
     return Material(
@@ -413,36 +403,22 @@ class _CountTabState extends State<CountTab> {
               ),
               Expanded(
                 flex: _unitFlex,
-                // container items show both like "bottle • ml", 2 lines when the panel makes it narrow
+                // 2 lines when the panel makes it narrow
                 child: Text(
-                  isContainer
-                      ? '${item.containerName} • ${item.baseUnit.name}'
-                      : item.baseUnit.name,
+                  unitText(item),
                   maxLines: _compact ? 2 : 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: _compact ? 12 : null),
                 ),
               ),
-              _number(shown(line.startQty)),
-              _number(shown(line.inQty)),
-              _number(_outText(line, isContainer)),
-              _number(shown(line.endQty), bold: true),
+              _number(shownAmount(item, line.startQty)),
+              _number(shownAmount(item, line.inQty)),
+              _number(outText(item, line)),
+              _number(shownAmount(item, line.endQty), bold: true),
             ],
           ),
         ),
       ),
-    );
-  }
-
-  // what the Out column shows (rule 3)
-  // container items = containers finished
-  // number items = pieces used, worked out here and not saved, read only for now
-  // an opening count has no usage (rule 7) so it shows a dash, its Start of 0 would give a wrong number
-  String _outText(CountLine line, bool isContainer) {
-    if (isContainer) return line.outCount.toString();
-    if (line.isOpening) return '—';
-    return formatAmount(
-      amountUsed(start: line.startQty, inQty: line.inQty, end: line.endQty),
     );
   }
 

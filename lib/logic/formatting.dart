@@ -52,3 +52,22 @@ String plainNumber(double value) {
 double? readNumber(String text) {
   return double.tryParse(text.trim().replaceAll(',', ''));
 }
+
+// a YYYY-MM-DD date with its weekday, like "Fri, Oct 30"
+String formatLongDate(String date) {
+  return DateFormat('EEE, MMM d').format(DateTime.parse(date));
+}
+
+// a YYYY-MM-DD date without its weekday, like "Oct 30"
+String formatShortDate(String date) {
+  return DateFormat('MMM d').format(DateTime.parse(date));
+}
+
+// the dates a count covers, like "Oct 29–30" or "Oct 31–Nov 2" over the end of a month
+String formatCovers(String from, String to) {
+  final sameMonth = from.substring(0, 7) == to.substring(0, 7);
+  final end = sameMonth
+      ? DateFormat('d').format(DateTime.parse(to))
+      : formatShortDate(to);
+  return '${formatShortDate(from)}–$end';
+}

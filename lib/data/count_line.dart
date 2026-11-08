@@ -8,6 +8,8 @@ class BusinessDay {
     required this.businessDate,
     required this.status,
     this.dayNote,
+    this.coversFrom,
+    this.submittedAt,
   });
 
   final int id;
@@ -15,6 +17,10 @@ class BusinessDay {
   final String businessDate;
   // the one optional note about the whole day (rule 9)
   final String? dayNote;
+  // the first date this count covers when it covers skipped open days (rule 5), null otherwise
+  final String? coversFrom;
+  // when it was submitted, utc iso text, null until then
+  final String? submittedAt;
   // draft, submitted or closed
   final String status;
 
@@ -27,6 +33,8 @@ class BusinessDay {
       businessDate: row['business_date'] as String,
       status: row['status'] as String,
       dayNote: row['day_note'] as String?,
+      coversFrom: row['covers_from'] as String?,
+      submittedAt: row['submitted_at'] as String?,
     );
   }
 }
