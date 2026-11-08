@@ -154,10 +154,8 @@ class _AnalyticsTabState extends State<AnalyticsTab> {
     return Card(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Wrap(
-          spacing: 16,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
+        // title on the left, the 2 toggles pushed to the right
+        child: Row(
           children: [
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -170,26 +168,40 @@ class _AnalyticsTabState extends State<AnalyticsTab> {
                 ),
               ],
             ),
-            SegmentedButton<int>(
-              key: const Key('analytics_range'),
-              segments: [
-                for (final days in rangeDays)
-                  ButtonSegment(value: days, label: Text('Last $days days')),
-              ],
-              selected: {_days},
-              showSelectedIcon: false,
-              onSelectionChanged: (picked) => _pickDays(picked.first),
-            ),
-            SegmentedButton<bool>(
-              key: const Key('analytics_view'),
-              segments: const [
-                ButtonSegment(value: false, label: Text('By day')),
-                ButtonSegment(value: true, label: Text('By week')),
-              ],
-              selected: {_byWeek},
-              showSelectedIcon: false,
-              onSelectionChanged: (picked) =>
-                  setState(() => _byWeek = picked.first),
+            const SizedBox(width: 16),
+            // Expanded + Wrap end = the toggles sit on the right, and go to a 2nd line if they dont fit
+            Expanded(
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 16,
+                runSpacing: 8,
+                children: [
+                  SegmentedButton<int>(
+                    key: const Key('analytics_range'),
+                    segments: [
+                      for (final days in rangeDays)
+                        ButtonSegment(
+                          value: days,
+                          label: Text('Last $days days'),
+                        ),
+                    ],
+                    selected: {_days},
+                    showSelectedIcon: false,
+                    onSelectionChanged: (picked) => _pickDays(picked.first),
+                  ),
+                  SegmentedButton<bool>(
+                    key: const Key('analytics_view'),
+                    segments: const [
+                      ButtonSegment(value: false, label: Text('By day')),
+                      ButtonSegment(value: true, label: Text('By week')),
+                    ],
+                    selected: {_byWeek},
+                    showSelectedIcon: false,
+                    onSelectionChanged: (picked) =>
+                        setState(() => _byWeek = picked.first),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
