@@ -35,10 +35,116 @@ class CountFix {
   final String? note;
 }
 
+// a note box: trimmed, empty = null, same as saveNote
+String? cleanNote(String? note) {
+  final clean = note?.trim() ?? '';
+  return clean.isEmpty ? null : clean;
+}
+
+// what a count fix changes on a saved line, the screen uses it to know if there is anything to add
+// and the store uses it to know what to log
+class CountDiff {
+  const CountDiff({
+    required this.countValues,
+    required this.end,
+    required this.endIsExact,
+    required this.countChanged,
+    required this.inChanged,
+    required this.outChanged,
+    required this.noteChanged,
+  });
+
+  // the new count columns for count_lines (sealed, level, exact_qty, end_qty, end_is_exact)
+  final Map<String, Object?> countValues;
+  final double end;
+  final bool endIsExact;
+  // a count changed when End or any of its fields changed, even if End came out the same
+  final bool countChanged;
+  final bool inChanged;
+  final bool outChanged;
+  final bool noteChanged;
+
+  // true when the fix changes at least 1 thing
+  bool get any => countChanged || inChanged || outChanged || noteChanged;
+}
+
+// compares a fix with the saved line, End only comes from the count fields (rule 3)
+CountDiff diffCount(StockItem item, CountLine old, CountFix fix) {
+  final isContainer = item.countType == CountType.container;
+  final Map<String, Object?> values;
+  final bool countChanged;
+  if (isContainer) {
+    final isExact = containerIsExact(level: fix.level!, exactQty: fix.exactQty);
+    values = {
+      'sealed': fix.sealed!,
+      'level': fix.level!,
+      'exact_qty': fix.exactQty,
+      'end_qty': containerEnd(
+        sealed: fix.sealed!,
+        containerSize: item.containerSize!,
+        level: fix.level!,
+        exactQty: fix.exactQty,
+      ),
+      'end_is_exact': isExact ? 1 : 0,
+    };
+    countChanged =
+        fix.sealed != old.sealed ||
+        fix.level != old.level ||
+        fix.exactQty != old.exactQty;
+  } else {
+    values = {'end_qty': fix.number!, 'end_is_exact': 1};
+    countChanged = fix.number != old.endQty;
+  }
+
+  return CountDiff(
+    countValues: values,
+    end: values['end_qty'] as double,
+    endIsExact: values['end_is_exact'] == 1,
+    countChanged: countChanged,
+    inChanged: fix.inQty != old.inQty,
+    outChanged: fix.outCount != old.outCount,
+    noteChanged: cleanNote(fix.note) != old.note,
+  );
+}
+
+// 1 change waiting on the correct screen, each one has its own reason
+// sealed = only these 3 kinds exist, so a switch over them never misses one
+sealed class Correction {
+  const Correction(this.reason);
+
+  final String reason;
+}
+
+// a count line fix of 1 stock item
+class CountCorrection extends Correction {
+  const CountCorrection(this.stockItemId, this.fix, String reason)
+    : super(reason);
+
+  final int stockItemId;
+  final CountFix fix;
+}
+
+// how many of a menu item were made, a menu item not tallied that day can be added too
+class TallyCorrection extends Correction {
+  const TallyCorrection(this.menuItemId, this.qty, String reason)
+    : super(reason);
+
+  final int menuItemId;
+  final int qty;
+}
+
+// the day note
+class DayNoteCorrection extends Correction {
+  const DayNoteCorrection(this.note, String reason) : super(reason);
+
+  final String note;
+}
+
 // fixes on the latest submitted day (rule 4)
-// every fix: checks the day can still be corrected, logs each changed field with its reason,
-// works out the day's numbers again and queues a short email to the owner
-// all of it in 1 transaction, so a fix is never half saved
+// the correct screen collects changes and saves them all when done is pressed:
+// checks the day can still be corrected, logs each changed field with its reason,
+// works out the day's numbers again and queues 1 short email to the owner with every change
+// all of it in 1 transaction, so a set of fixes is never half saved
 class CorrectionStore {
   CorrectionStore(this._db, {Clock clock = utcNow}) : _clock = clock;
 
@@ -61,7 +167,7 @@ class CorrectionStore {
     return rows.isEmpty ? null : rows.first['id'] as int;
   }
 
-  // checked again inside every fix, the screen could be open while the next day gets submitted
+  // checked again inside the save, the screen could be open while the next day gets submitted
   Future<void> _checkCanCorrect(Transaction txn, int dayId) async {
     if (await _latestSubmitted(txn) != dayId) {
       throw StateError('Only the latest submitted day can be corrected');
@@ -75,195 +181,224 @@ class CorrectionStore {
     return clean;
   }
 
-  // a note box: trimmed, empty = null, same as saveNote
-  String? _cleanNote(String? note) {
-    final clean = note?.trim() ?? '';
-    return clean.isEmpty ? null : clean;
+  // saves every change in 1 transaction, in the order given
+  // gives back how many of them changed something, a change that turns out the same as saved is skipped
+  // 0 = nothing saved and no email
+  // not async on purpose: a missing reason or a tally below 0 throws right away, before anything starts
+  Future<int> saveAll(int dayId, List<Correction> changes) {
+    final reasons = [for (final change in changes) _cleanReason(change.reason)];
+    for (final change in changes) {
+      if (change is TallyCorrection && change.qty < 0) {
+        throw ArgumentError('A tally cant go below 0');
+      }
+    }
+
+    return _db.transaction((txn) async {
+      await _checkCanCorrect(txn, dayId);
+
+      // every logged field of every change, for the 1 email
+      final all = <CorrectionEntry>[];
+      var changed = 0;
+      for (var i = 0; i < changes.length; i++) {
+        final entries = switch (changes[i]) {
+          final CountCorrection c => await _applyCount(
+            txn,
+            dayId,
+            c,
+            reasons[i],
+          ),
+          final TallyCorrection c => await _applyTally(
+            txn,
+            dayId,
+            c,
+            reasons[i],
+          ),
+          final DayNoteCorrection c => await _applyDayNote(
+            txn,
+            dayId,
+            c,
+            reasons[i],
+          ),
+        };
+        if (entries.isNotEmpty) changed++;
+        all.addAll(entries);
+      }
+      if (all.isEmpty) return 0;
+
+      await _finish(txn, dayId, all);
+      return changed;
+    });
   }
 
-  // fixes one count line, gives back false when nothing changed (nothing gets saved or sent then)
+  // 1 count line fix on its own, true when something changed
   Future<bool> correctCount(
     int dayId,
     int stockItemId,
     CountFix fix,
     String reason,
-  ) {
-    final why = _cleanReason(reason);
+  ) => _saveOne(dayId, CountCorrection(stockItemId, fix, reason));
 
-    return _db.transaction((txn) async {
-      await _checkCanCorrect(txn, dayId);
-      final item = await _stockItem(txn, stockItemId);
-      final lineRows = await txn.query(
-        'count_lines',
-        where: 'day_id = ? AND stock_item_id = ?',
-        whereArgs: [dayId, stockItemId],
-      );
-      final old = CountLine.fromRow(lineRows.first);
+  // 1 tally fix on its own, true when the number changed
+  Future<bool> correctTally(
+    int dayId,
+    int menuItemId,
+    int qty,
+    String reason,
+  ) => _saveOne(dayId, TallyCorrection(menuItemId, qty, reason));
 
-      // the new count fields, End only comes from them (rule 3)
-      final isContainer = item.countType == CountType.container;
-      final Map<String, Object?> count;
-      if (isContainer) {
-        count = {
-          'sealed': fix.sealed!,
-          'level': fix.level!,
-          'exact_qty': fix.exactQty,
-          'end_qty': containerEnd(
-            sealed: fix.sealed!,
-            containerSize: item.containerSize!,
-            level: fix.level!,
-            exactQty: fix.exactQty,
-          ),
-          'end_is_exact':
-              containerIsExact(level: fix.level!, exactQty: fix.exactQty)
-              ? 1
-              : 0,
-        };
-      } else {
-        count = {'end_qty': fix.number!, 'end_is_exact': 1};
-      }
-      final newEnd = count['end_qty'] as double;
-      final newNote = _cleanNote(fix.note);
+  // the day note on its own, true when it changed
+  Future<bool> correctDayNote(int dayId, String note, String reason) =>
+      _saveOne(dayId, DayNoteCorrection(note, reason));
 
-      // a count changed when End or any of its fields changed, even if End came out the same
-      final countChanged = isContainer
-          ? fix.sealed != old.sealed ||
-                fix.level != old.level ||
-                fix.exactQty != old.exactQty
-          : newEnd != old.endQty;
-
-      final changes = <CorrectionEntry>[
-        if (countChanged) _countEntry('end', item, old.endQty, newEnd, why),
-        if (fix.inQty != old.inQty)
-          _countEntry('in', item, old.inQty, fix.inQty, why),
-        if (fix.outCount != old.outCount)
-          _entry(
-            'count',
-            'out',
-            item.name,
-            '${old.outCount}',
-            '${fix.outCount}',
-            why,
-            item: item,
-          ),
-        if (newNote != old.note)
-          _entry('count', 'note', item.name, old.note, newNote, why),
-      ];
-      if (changes.isEmpty) return false;
-
-      await txn.update(
-        'count_lines',
-        {
-          ...count,
-          'in_qty': fix.inQty,
-          'out_count': fix.outCount,
-          'note': newNote,
-        },
-        where: 'id = ?',
-        whereArgs: [old.id],
-      );
-      await _log(txn, dayId, old.id, changes);
-      if (countChanged) {
-        await _updateDraft(
-          txn,
-          item,
-          end: newEnd,
-          endIsExact: count['end_is_exact'] == 1,
-          state: isContainer
-              ? ContainerState(
-                  sealed: fix.sealed!,
-                  level: fix.level!,
-                  exactQty: fix.exactQty,
-                )
-              : null,
-        );
-      }
-      await _finish(txn, dayId, changes);
-      return true;
-    });
+  Future<bool> _saveOne(int dayId, Correction change) {
+    final saving = saveAll(dayId, [change]);
+    return saving.then((changed) => changed > 0);
   }
 
-  // sets how many of a menu item were made, a menu item not tallied that day can be added too
-  // gives back false when the number is the same
-  Future<bool> correctTally(int dayId, int menuItemId, int qty, String reason) {
-    final why = _cleanReason(reason);
-    if (qty < 0) throw ArgumentError('A tally cant go below 0');
+  // writes 1 count line fix and gives back what changed (empty = nothing)
+  Future<List<CorrectionEntry>> _applyCount(
+    Transaction txn,
+    int dayId,
+    CountCorrection change,
+    String why,
+  ) async {
+    final item = await _stockItem(txn, change.stockItemId);
+    final lineRows = await txn.query(
+      'count_lines',
+      where: 'day_id = ? AND stock_item_id = ?',
+      whereArgs: [dayId, change.stockItemId],
+    );
+    final old = CountLine.fromRow(lineRows.first);
+    final fix = change.fix;
+    final diff = diffCount(item, old, fix);
+    final newNote = cleanNote(fix.note);
 
-    return _db.transaction((txn) async {
-      await _checkCanCorrect(txn, dayId);
-      // INSERT OR IGNORE = makes the line at 0 only if it isnt there yet, so there is a line id to log
-      // a line taken to 0 stays at 0 so the log still points to it, every screen skips 0 lines
-      await txn.rawInsert(
-        'INSERT OR IGNORE INTO tally_lines (day_id, menu_item_id, qty) '
-        'VALUES (?, ?, 0)',
-        [dayId, menuItemId],
-      );
-      final lineRows = await txn.query(
-        'tally_lines',
-        where: 'day_id = ? AND menu_item_id = ?',
-        whereArgs: [dayId, menuItemId],
-      );
-      final line = lineRows.first;
-      final oldQty = line['qty'] as int;
-      if (oldQty == qty) return false;
-
-      final menuRows = await txn.query(
-        'menu_items',
-        columns: ['name'],
-        where: 'id = ?',
-        whereArgs: [menuItemId],
-      );
-      final changes = [
+    final entries = <CorrectionEntry>[
+      if (diff.countChanged)
+        _countEntry('end', item, old.endQty, diff.end, why),
+      if (diff.inChanged) _countEntry('in', item, old.inQty, fix.inQty, why),
+      if (diff.outChanged)
         _entry(
-          'tally',
-          'qty',
-          menuRows.first['name'] as String,
-          '$oldQty',
-          '$qty',
+          'count',
+          'out',
+          item.name,
+          '${old.outCount}',
+          '${fix.outCount}',
           why,
+          item: item,
         ),
-      ];
-      await txn.update(
-        'tally_lines',
-        {'qty': qty},
-        where: 'id = ?',
-        whereArgs: [line['id']],
+      if (diff.noteChanged)
+        _entry('count', 'note', item.name, old.note, newNote, why),
+    ];
+    if (entries.isEmpty) return entries;
+
+    await txn.update(
+      'count_lines',
+      {
+        ...diff.countValues,
+        'in_qty': fix.inQty,
+        'out_count': fix.outCount,
+        'note': newNote,
+      },
+      where: 'id = ?',
+      whereArgs: [old.id],
+    );
+    await _log(txn, dayId, old.id, entries);
+    if (diff.countChanged) {
+      await _updateDraft(
+        txn,
+        item,
+        end: diff.end,
+        endIsExact: diff.endIsExact,
+        state: item.countType == CountType.container
+            ? ContainerState(
+                sealed: fix.sealed!,
+                level: fix.level!,
+                exactQty: fix.exactQty,
+              )
+            : null,
       );
-      await _log(txn, dayId, line['id'] as int, changes);
-      await _finish(txn, dayId, changes);
-      return true;
-    });
+    }
+    return entries;
   }
 
-  // fixes the day note, gives back false when it is the same
-  Future<bool> correctDayNote(int dayId, String note, String reason) {
-    final why = _cleanReason(reason);
-    final newNote = _cleanNote(note);
+  // writes 1 tally fix and gives back what changed (empty = the same number)
+  Future<List<CorrectionEntry>> _applyTally(
+    Transaction txn,
+    int dayId,
+    TallyCorrection change,
+    String why,
+  ) async {
+    // INSERT OR IGNORE = makes the line at 0 only if it isnt there yet, so there is a line id to log
+    // a line taken to 0 stays at 0 so the log still points to it, every screen skips 0 lines
+    await txn.rawInsert(
+      'INSERT OR IGNORE INTO tally_lines (day_id, menu_item_id, qty) '
+      'VALUES (?, ?, 0)',
+      [dayId, change.menuItemId],
+    );
+    final lineRows = await txn.query(
+      'tally_lines',
+      where: 'day_id = ? AND menu_item_id = ?',
+      whereArgs: [dayId, change.menuItemId],
+    );
+    final line = lineRows.first;
+    final oldQty = line['qty'] as int;
+    if (oldQty == change.qty) return [];
 
-    return _db.transaction((txn) async {
-      await _checkCanCorrect(txn, dayId);
-      final dayRows = await txn.query(
-        'business_days',
-        where: 'id = ?',
-        whereArgs: [dayId],
-      );
-      final oldNote = dayRows.first['day_note'] as String?;
-      if (oldNote == newNote) return false;
+    final menuRows = await txn.query(
+      'menu_items',
+      columns: ['name'],
+      where: 'id = ?',
+      whereArgs: [change.menuItemId],
+    );
+    final entries = [
+      _entry(
+        'tally',
+        'qty',
+        menuRows.first['name'] as String,
+        '$oldQty',
+        '${change.qty}',
+        why,
+      ),
+    ];
+    await txn.update(
+      'tally_lines',
+      {'qty': change.qty},
+      where: 'id = ?',
+      whereArgs: [line['id']],
+    );
+    await _log(txn, dayId, line['id'] as int, entries);
+    return entries;
+  }
 
-      final changes = [
-        _entry('day', 'day_note', 'Day note', oldNote, newNote, why),
-      ];
-      await txn.update(
-        'business_days',
-        {'day_note': newNote},
-        where: 'id = ?',
-        whereArgs: [dayId],
-      );
-      // line_id holds the day's id for a day note (see the corrections table)
-      await _log(txn, dayId, dayId, changes);
-      await _finish(txn, dayId, changes);
-      return true;
-    });
+  // writes the day note fix and gives back what changed (empty = the same note)
+  Future<List<CorrectionEntry>> _applyDayNote(
+    Transaction txn,
+    int dayId,
+    DayNoteCorrection change,
+    String why,
+  ) async {
+    final newNote = cleanNote(change.note);
+    final dayRows = await txn.query(
+      'business_days',
+      where: 'id = ?',
+      whereArgs: [dayId],
+    );
+    final oldNote = dayRows.first['day_note'] as String?;
+    if (oldNote == newNote) return [];
+
+    final entries = [
+      _entry('day', 'day_note', 'Day note', oldNote, newNote, why),
+    ];
+    await txn.update(
+      'business_days',
+      {'day_note': newNote},
+      where: 'id = ?',
+      whereArgs: [dayId],
+    );
+    // line_id holds the day's id for a day note (see the corrections table)
+    await _log(txn, dayId, dayId, entries);
+    return entries;
   }
 
   // the corrections of a day, oldest first, for the history tab
@@ -386,7 +521,7 @@ class CorrectionStore {
     }
   }
 
-  // after every fix: the day's numbers again, then the email with the corrected count table
+  // after the fixes: the day's numbers again, then 1 email with every change and the corrected count table
   Future<void> _finish(
     Transaction txn,
     int dayId,

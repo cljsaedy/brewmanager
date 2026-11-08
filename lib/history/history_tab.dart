@@ -83,12 +83,31 @@ class _HistoryTabState extends State<HistoryTab> {
 
   // correct tapped: opens the correct screen
   // when it closes the app layout starts this tab fresh, so the new numbers and corrections show
+  // the screen gives back how many corrections were saved, null when cancelled
   Future<void> _openCorrect(int dayId) async {
-    await Navigator.of(context).push(
+    // taken before the wait, this tab can be rebuilt while the correct screen is open
+    final messenger = ScaffoldMessenger.of(context);
+    final saved = await Navigator.of(context).push<int>(
       MaterialPageRoute(
         builder: (_) => CorrectionScreen(store: widget.store!, dayId: dayId),
       ),
     );
+    if (saved == null) return;
+
+    final String text;
+    if (saved == 0) {
+      text = 'Nothing changed, so nothing was saved.';
+    } else if (saved == 1) {
+      text = '1 correction saved. The owner will get an email about it.';
+    } else {
+      text =
+          '$saved corrections saved. The owner will get an email about them.';
+    }
+    messenger
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(content: Text(text), duration: const Duration(seconds: 3)),
+      );
   }
 
   @override

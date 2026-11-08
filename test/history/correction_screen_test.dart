@@ -118,8 +118,8 @@ void main() {
     await waitForDb(tester);
   }
 
-  Future<void> typeReasonAndSave(WidgetTester tester, String reason) async {
-    // the form can be taller than the screen, a list only builds what is on screen
+  // the form can be taller than the screen, a list only builds what is on screen
+  Future<void> scrollToReason(WidgetTester tester) async {
     await tester.scrollUntilVisible(
       find.byKey(const Key('reason_field')),
       100,
@@ -130,17 +130,34 @@ void main() {
           )
           .first,
     );
+  }
+
+  // types the reason and presses add change, nothing is saved yet
+  Future<void> typeReasonAndAdd(WidgetTester tester, String reason) async {
+    await scrollToReason(tester);
     await tester.enterText(find.byKey(const Key('reason_field')), reason);
     await tester.pump();
-    await tester.ensureVisible(find.byKey(const Key('save_correction')));
-    await tester.tap(find.byKey(const Key('save_correction')));
+    await tester.ensureVisible(find.byKey(const Key('add_change')));
+    await tester.tap(find.byKey(const Key('add_change')));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> saveAll(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('save_corrections')));
     await waitForDb(tester);
   }
 
-  bool saveEnabled(WidgetTester tester) {
-    return tester
-        .widget<FilledButton>(find.byKey(const Key('save_correction')))
-        .enabled;
+  bool enabled(WidgetTester tester, String key) {
+    return tester.widget<ButtonStyleButton>(find.byKey(Key(key))).enabled;
+  }
+
+  Future<List<Map<String, Object?>>> rows(
+    WidgetTester tester,
+    String table,
+  ) async {
+    late List<Map<String, Object?>> result;
+    await tester.runAsync(() async => result = await db.query(table));
+    return result;
   }
 
   testWidgets('correct shows only on the newest submitted day', (tester) async {
@@ -155,7 +172,19 @@ void main() {
     expect(find.byKey(const Key('correct_button')), findsNothing);
   });
 
-  testWidgets('a number End fix needs a reason, then shows in history', (
+  testWidgets('the pick hint shows before anything is picked', (tester) async {
+    await tester.runAsync(addDays);
+    await openCorrect(tester);
+
+    expect(
+      find.text('Pick an item, a tally line or the day note on the left.'),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.touch_app_outlined), findsOneWidget);
+    expect(enabled(tester, 'save_corrections'), isFalse);
+  });
+
+  testWidgets('add change saves nothing, save corrections saves it', (
     tester,
   ) async {
     await tester.runAsync(addDays);
@@ -165,18 +194,24 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('end_field')), '6');
     await tester.pump();
-    expect(saveEnabled(tester), isFalse);
+    // no reason yet
+    expect(enabled(tester, 'add_change'), isFalse);
 
-    await typeReasonAndSave(tester, 'typo');
+    await typeReasonAndAdd(tester, 'typo');
+
+    // waiting: the list shows the new values, the db still has the old ones
+    expect(find.text('Changed'), findsNWidgets(2));
+    expect(find.text('End 6 · In 0 · Out 2'), findsOneWidget);
+    expect(find.text('Save corrections (1)'), findsOneWidget);
+    expect(await rows(tester, 'corrections'), isEmpty);
+    expect(await rows(tester, 'outbox'), isEmpty);
+
+    await saveAll(tester);
 
     expect(
-      find.text('Correction saved. The owner will get an email about it.'),
+      find.text('1 correction saved. The owner will get an email about it.'),
       findsOneWidget,
     );
-    expect(find.text('End 6 · In 0 · Out 2'), findsOneWidget);
-
-    await tester.tap(find.text('Done'));
-    await waitForDb(tester);
     await tester.scrollUntilVisible(
       find.text('Fries pack End 5 → 6 pcs'),
       100,
@@ -199,7 +234,8 @@ void main() {
     await tester.tap(find.byKey(const Key('sealed_plus')));
     await tester.tap(find.text('75%'));
     await tester.pump();
-    await typeReasonAndSave(tester, 'missed one');
+    await typeReasonAndAdd(tester, 'missed one');
+    await saveAll(tester);
 
     late List<Map<String, Object?>> lines;
     await tester.runAsync(() async {
@@ -215,7 +251,7 @@ void main() {
     expect(lines.single['end_qty'], 7500);
   });
 
-  testWidgets('a tally fix and a day note fix', (tester) async {
+  testWidgets('a tally fix and a day note fix go in 1 email', (tester) async {
     await tester.runAsync(addDays);
     await openCorrect(tester);
 
@@ -223,7 +259,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('qty_plus')));
     await tester.pump();
-    await typeReasonAndSave(tester, 'missed a receipt');
+    await typeReasonAndAdd(tester, 'missed a receipt');
     expect(find.text('× 3'), findsOneWidget);
 
     await tester.ensureVisible(find.byKey(const Key('fix_dayNote_0')));
@@ -233,22 +269,130 @@ void main() {
       find.byKey(const Key('day_note_field')),
       'power outage',
     );
-    await typeReasonAndSave(tester, 'forgot');
+    await typeReasonAndAdd(tester, 'forgot');
+    expect(find.text('Save corrections (2)'), findsOneWidget);
 
-    late List<Map<String, Object?>> emails;
-    await tester.runAsync(() async => emails = await db.query('outbox'));
-    expect(emails, hasLength(2));
+    await saveAll(tester);
+
+    expect(
+      find.text('2 corrections saved. The owner will get an email about them.'),
+      findsOneWidget,
+    );
+    expect(await rows(tester, 'corrections'), hasLength(2));
+    expect(await rows(tester, 'outbox'), hasLength(1));
   });
 
-  testWidgets('saving with nothing changed says so', (tester) async {
+  testWidgets('add change stays off when nothing is different', (tester) async {
     await tester.runAsync(addDays);
     await openCorrect(tester);
 
     await tester.tap(find.byKey(Key('fix_count_$friesId')));
     await tester.pumpAndSettle();
-    await typeReasonAndSave(tester, 'just checking');
+    await scrollToReason(tester);
+    await tester.enterText(find.byKey(const Key('reason_field')), 'checking');
+    await tester.pump();
 
-    expect(find.text('Nothing changed, so nothing was saved.'), findsOneWidget);
+    expect(enabled(tester, 'add_change'), isFalse);
+  });
+
+  testWidgets('undo change takes it out of the waiting list', (tester) async {
+    await tester.runAsync(addDays);
+    await openCorrect(tester);
+
+    await tester.tap(find.byKey(Key('fix_count_$friesId')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('end_field')), '6');
+    await typeReasonAndAdd(tester, 'typo');
+    await tester.tap(find.byKey(const Key('undo_change')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Changed'), findsNothing);
+    expect(find.text('End 5 · In 0 · Out 3'), findsOneWidget);
+    expect(enabled(tester, 'save_corrections'), isFalse);
+  });
+
+  testWidgets('tapping a waiting change again shows what was added', (
+    tester,
+  ) async {
+    await tester.runAsync(addDays);
+    await openCorrect(tester);
+
+    await tester.tap(find.byKey(Key('fix_count_$friesId')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('end_field')), '6');
+    await typeReasonAndAdd(tester, 'typo');
+    await tester.tap(find.byKey(Key('fix_count_$syrupId')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(Key('fix_count_$friesId')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('end_field')))
+          .controller!
+          .text,
+      '6',
+    );
+    expect(find.text('Update change'), findsOneWidget);
+  });
+
+  testWidgets('picking another item with an edit not added asks first', (
+    tester,
+  ) async {
+    await tester.runAsync(addDays);
+    await openCorrect(tester);
+
+    await tester.tap(find.byKey(Key('fix_count_$friesId')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('end_field')), '6');
+    await tester.pump();
+    await tester.tap(find.byKey(Key('fix_count_$syrupId')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Discard the change to Fries pack?'), findsOneWidget);
+    await tester.tap(find.text('Keep editing'));
+    await tester.pumpAndSettle();
+    // still on fries with the edit
+    expect(find.byKey(const Key('end_field')), findsOneWidget);
+
+    await tester.tap(find.byKey(Key('fix_count_$syrupId')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('discard_button')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('sealed_value')), findsOneWidget);
+  });
+
+  testWidgets('cancel with a waiting change asks, then saves nothing', (
+    tester,
+  ) async {
+    await tester.runAsync(addDays);
+    await openCorrect(tester);
+
+    await tester.tap(find.byKey(Key('fix_count_$friesId')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('end_field')), '6');
+    await typeReasonAndAdd(tester, 'typo');
+    await tester.tap(find.byKey(const Key('cancel_corrections')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Discard 1 change?'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('discard_button')));
+    await waitForDb(tester);
+
+    // back on history, nothing saved
+    expect(find.byKey(const Key('correct_button')), findsOneWidget);
+    expect(await rows(tester, 'corrections'), isEmpty);
+    expect(await rows(tester, 'outbox'), isEmpty);
+  });
+
+  testWidgets('cancel with nothing waiting just closes', (tester) async {
+    await tester.runAsync(addDays);
+    await openCorrect(tester);
+
+    await tester.tap(find.byKey(const Key('cancel_corrections')));
+    await waitForDb(tester);
+
+    expect(find.byKey(const Key('correct_button')), findsOneWidget);
   });
 
   testWidgets('the fix updates the draft Start on the count tab', (
@@ -260,21 +404,18 @@ void main() {
     await tester.tap(find.byKey(Key('fix_count_$friesId')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('end_field')), '6');
-    await typeReasonAndSave(tester, 'typo');
-    await tester.tap(find.text('Done'));
-    await waitForDb(tester);
+    await typeReasonAndAdd(tester, 'typo');
+    await saveAll(tester);
 
-    late Map<String, Object?> line;
+    late double start;
     await tester.runAsync(() async {
       final draft = await store.loadDraft();
-      line = {
-        'start': draft.rows
-            .firstWhere((row) => row.item.id == friesId)
-            .line
-            .startQty,
-      };
+      start = draft.rows
+          .firstWhere((row) => row.item.id == friesId)
+          .line
+          .startQty;
     });
-    expect(line['start'], 6);
+    expect(start, 6);
   });
 
   testWidgets('no expected number shows', (tester) async {

@@ -492,4 +492,119 @@ void main() {
       expect((await resultOf(day2, friesId))['expected_qty'], 3);
     });
   });
+
+  group('saving several at once', () {
+    test('every change is logged and the owner gets 1 email', () async {
+      final day2 = await twoDays();
+
+      final changed = await fixes.saveAll(day2, [
+        CountCorrection(friesId, friesFix(number: 6), 'typo'),
+        TallyCorrection(friesMenuId, 3, 'missed a receipt'),
+        const DayNoteCorrection('power outage', 'forgot'),
+      ]);
+
+      expect(changed, 3);
+      expect((await lineOf(day2, friesId)).endQty, 6);
+      final entries = await fixes.corrections(day2);
+      expect(entries.map((entry) => entry.reason), [
+        'typo',
+        'missed a receipt',
+        'forgot',
+      ]);
+      final emails = await db.query('outbox');
+      expect(emails, hasLength(1));
+      final html = emails.single['html_body'] as String;
+      expect(html, contains('Fries pack End 5 → 6 pcs'));
+      expect(html, contains('French Fries tally 2 → 3'));
+      expect(html, contains('power outage'));
+      // 6 fries left from 8, 3 tallied: actual 2, expected 3
+      expect((await resultOf(day2, friesId))['actual_qty'], 2);
+      expect((await resultOf(day2, friesId))['expected_qty'], 3);
+    });
+
+    test('a change that is the same as saved is skipped', () async {
+      final day2 = await twoDays();
+
+      final changed = await fixes.saveAll(day2, [
+        CountCorrection(friesId, friesFix(), 'checking'),
+        const DayNoteCorrection('power outage', 'forgot'),
+      ]);
+
+      expect(changed, 1);
+      expect(await db.query('corrections'), hasLength(1));
+    });
+
+    test('nothing changed saves and sends nothing', () async {
+      final day2 = await twoDays();
+
+      expect(
+        await fixes.saveAll(day2, [
+          CountCorrection(friesId, friesFix(), 'checking'),
+        ]),
+        0,
+      );
+      expect(await db.query('outbox'), isEmpty);
+    });
+
+    test('an error in 1 change undoes all of them', () async {
+      final day2 = await twoDays();
+
+      // menu item 999 does not exist, so its tally line breaks the foreign key
+      await expectLater(
+        fixes.saveAll(day2, [
+          CountCorrection(friesId, friesFix(number: 6), 'typo'),
+          TallyCorrection(999, 3, 'bad'),
+        ]),
+        throwsA(isA<DatabaseException>()),
+      );
+
+      expect((await lineOf(day2, friesId)).endQty, 5);
+      expect(await db.query('corrections'), isEmpty);
+      expect(await db.query('outbox'), isEmpty);
+    });
+
+    test('1 missing reason stops all of them before anything starts', () async {
+      final day2 = await twoDays();
+
+      expect(
+        () => fixes.saveAll(day2, [
+          CountCorrection(friesId, friesFix(number: 6), 'typo'),
+          const DayNoteCorrection('x', ' '),
+        ]),
+        throwsArgumentError,
+      );
+      expect((await lineOf(day2, friesId)).endQty, 5);
+    });
+  });
+
+  test('diffCount sees a level change even when End stays the same', () {
+    const old = CountLine(
+      id: 1,
+      dayId: 1,
+      stockItemId: 1,
+      startQty: 0,
+      startIsExact: true,
+      inQty: 0,
+      outCount: 0,
+      sealed: 1,
+      level: levelNone,
+      exactQty: 500,
+      endQty: 2500,
+      endIsExact: true,
+      touched: true,
+      isOpening: false,
+      note: null,
+    );
+    // 1 sealed + 25% of 2000 = 2500 too, but now it is an estimate
+    final diff = diffCount(
+      syrup,
+      old,
+      const CountFix(sealed: 1, level: level25, inQty: 0, outCount: 0),
+    );
+
+    expect(diff.end, 2500);
+    expect(diff.countChanged, isTrue);
+    expect(diff.endIsExact, isFalse);
+    expect(diff.any, isTrue);
+  });
 }

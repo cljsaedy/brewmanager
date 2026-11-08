@@ -33,8 +33,69 @@ class _Pick {
   int get hashCode => Object.hash(kind, id);
 }
 
+// everything the form holds at one moment
+// kept with each waiting change so tapping the item again shows what was added,
+// and kept from when an item was picked so the screen knows if the form was edited since
+class _Form {
+  const _Form({
+    this.sealed = 0,
+    this.level = levelNone,
+    this.inContainers = 0,
+    this.out = 0,
+    this.qty = 0,
+    this.exactText = '',
+    this.numberText = '',
+    this.inText = '',
+    this.noteText = '',
+    this.reason = '',
+  });
+
+  final int sealed;
+  final double level;
+  // containers restocked, container items only, number items use inText
+  final int inContainers;
+  final int out;
+  // the tally number
+  final int qty;
+  final String exactText;
+  final String numberText;
+  final String inText;
+  final String noteText;
+  final String reason;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _Form &&
+      other.sealed == sealed &&
+      other.level == level &&
+      other.inContainers == inContainers &&
+      other.out == out &&
+      other.qty == qty &&
+      other.exactText == exactText &&
+      other.numberText == numberText &&
+      other.inText == inText &&
+      other.noteText == noteText &&
+      other.reason == reason;
+
+  @override
+  int get hashCode => Object.hash(
+    sealed,
+    level,
+    inContainers,
+    out,
+    qty,
+    exactText,
+    numberText,
+    inText,
+    noteText,
+    reason,
+  );
+}
+
 // fixes on the latest submitted day (rule 4): pick something on the left, change it on the right
-// every save needs a reason, gets logged, and queues a short email to the owner
+// "add change" only puts the change in a waiting list, nothing is saved yet
+// "save corrections" saves every waiting change at once (1 transaction) and the owner gets 1 email
+// "cancel" or back throws the waiting changes away, after asking
 // no expected numbers here, this is the barista side
 class CorrectionScreen extends StatefulWidget {
   const CorrectionScreen({super.key, required this.store, required this.dayId});
@@ -55,10 +116,14 @@ class _CorrectionScreenState extends State<CorrectionScreen> {
   List<TallyRow>? _tally;
   _Pick? _pick;
 
-  // the form, filled from the saved values when something is picked
+  // the changes added but not saved yet, a map keeps the order they were first added
+  final Map<_Pick, _Form> _waiting = {};
+  // the form as it was when the item was picked (or its change was added)
+  _Form _loaded = const _Form();
+
+  // the form fields
   int _sealed = 0;
   double _level = levelNone;
-  // containers restocked, container items only, number items use _inBox
   int _inContainers = 0;
   int _out = 0;
   int _qty = 0;
@@ -89,7 +154,6 @@ class _CorrectionScreenState extends State<CorrectionScreen> {
     super.dispose();
   }
 
-  // reads the day again, after a save too so the left side shows the new values
   Future<void> _load() async {
     final detail = await widget.store.history.detail(widget.dayId);
     final tally = await widget.store.tally.load(widget.dayId);
@@ -115,42 +179,87 @@ class _CorrectionScreenState extends State<CorrectionScreen> {
     return 0;
   }
 
-  // picks something and fills the form with what is saved now
-  void _select(_Pick pick) {
+  String _nameOf(_Pick pick) {
+    return switch (pick.kind) {
+      _Kind.count => _rowOf(pick.id)!.item.name,
+      _Kind.tally =>
+        _tally!.firstWhere((row) => row.item.id == pick.id).item.name,
+      _Kind.dayNote => 'Day note',
+    };
+  }
+
+  // the form filled with what is saved in the db now
+  _Form _savedForm(_Pick pick) {
+    switch (pick.kind) {
+      case _Kind.count:
+        final row = _rowOf(pick.id)!;
+        final line = row.line;
+        final item = row.item;
+        return _Form(
+          sealed: line.sealed ?? 0,
+          level: line.level ?? levelNone,
+          exactText: line.exactQty == null ? '' : plainNumber(line.exactQty!),
+          numberText: plainNumber(line.endQty),
+          inText: plainNumber(line.inQty),
+          inContainers: item.countType == CountType.container
+              ? containersIn(line.inQty, item.containerSize!)
+              : 0,
+          out: line.outCount,
+          noteText: line.note ?? '',
+        );
+      case _Kind.tally:
+        return _Form(qty: _qtyOf(pick.id));
+      case _Kind.dayNote:
+        return _Form(noteText: _detail!.day.dayNote ?? '');
+    }
+  }
+
+  // what the form fields hold right now
+  _Form get _current => _Form(
+    sealed: _sealed,
+    level: _level,
+    inContainers: _inContainers,
+    out: _out,
+    qty: _qty,
+    exactText: _exactBox.text,
+    numberText: _numberBox.text,
+    inText: _inBox.text,
+    noteText: _noteBox.text,
+    reason: _reasonBox.text,
+  );
+
+  void _fill(_Form form) {
+    _sealed = form.sealed;
+    _level = form.level;
+    _inContainers = form.inContainers;
+    _out = form.out;
+    _qty = form.qty;
+    _exactBox.text = form.exactText;
+    _numberBox.text = form.numberText;
+    _inBox.text = form.inText;
+    _noteBox.text = form.noteText;
+    _reasonBox.text = form.reason;
+  }
+
+  // true when the form was edited since the item was picked and that edit is not added yet
+  bool get _hasUnaddedEdit => _pick != null && _current != _loaded;
+
+  // picks something, shows its waiting change if it has one, else what is saved
+  Future<void> _select(_Pick pick) async {
+    if (pick == _pick) return;
+    if (_hasUnaddedEdit && !await _confirmDropEdit()) return;
+    if (!mounted) return;
     FocusScope.of(context).unfocus();
     setState(() {
       _pick = pick;
-      _reasonBox.clear();
-      switch (pick.kind) {
-        case _Kind.count:
-          final line = _rowOf(pick.id)!.line;
-          final item = _rowOf(pick.id)!.item;
-          _sealed = line.sealed ?? 0;
-          _level = line.level ?? levelNone;
-          _exactBox.text = line.exactQty == null
-              ? ''
-              : plainNumber(line.exactQty!);
-          _numberBox.text = plainNumber(line.endQty);
-          _inBox.text = plainNumber(line.inQty);
-          _inContainers = item.countType == CountType.container
-              ? containersIn(line.inQty, item.containerSize!)
-              : 0;
-          _out = line.outCount;
-          _noteBox.text = line.note ?? '';
-        case _Kind.tally:
-          _qty = _qtyOf(pick.id);
-        case _Kind.dayNote:
-          _noteBox.text = _detail!.day.dayNote ?? '';
-      }
+      _loaded = _waiting[pick] ?? _savedForm(pick);
+      _fill(_loaded);
     });
   }
 
-  // true when the form can be saved: a reason, and the number boxes hold numbers
-  bool get _canSave {
-    final pick = _pick;
-    if (pick == null || _saving || _reasonBox.text.trim().isEmpty) return false;
+  // the number boxes hold numbers
+  bool _formIsValid(_Pick pick) {
     if (pick.kind != _Kind.count) return true;
-
     final item = _rowOf(pick.id)!.item;
     if (item.countType == CountType.container) {
       return _exactBox.text.trim().isEmpty ||
@@ -160,39 +269,100 @@ class _CorrectionScreenState extends State<CorrectionScreen> {
         readNumber(_inBox.text) != null;
   }
 
-  Future<void> _save() async {
+  // true when the form is different from what is saved in the db
+  bool _differsFromSaved(_Pick pick, _Form form) {
+    switch (pick.kind) {
+      case _Kind.count:
+        final row = _rowOf(pick.id)!;
+        return diffCount(row.item, row.line, _countFix(row, form)).any;
+      case _Kind.tally:
+        return form.qty != _qtyOf(pick.id);
+      case _Kind.dayNote:
+        return cleanNote(form.noteText) != _detail!.day.dayNote;
+    }
+  }
+
+  // add change: something new in the form, it is different from the saved values, and it has a reason
+  bool get _canAdd {
+    final pick = _pick;
+    if (pick == null || _saving || !_hasUnaddedEdit) return false;
+    if (_reasonBox.text.trim().isEmpty || !_formIsValid(pick)) return false;
+    return _differsFromSaved(pick, _current);
+  }
+
+  // puts the change in the waiting list, nothing is saved yet
+  void _add() {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _waiting[_pick!] = _current;
+      _loaded = _current;
+    });
+  }
+
+  // takes the change out of the waiting list and shows the saved values again
+  void _undo() {
     final pick = _pick!;
-    final reason = _reasonBox.text;
+    setState(() {
+      _waiting.remove(pick);
+      _loaded = _savedForm(pick);
+      _fill(_loaded);
+    });
+  }
+
+  // the fix from a form, in base units like everything in the db
+  CountFix _countFix(CountRow row, _Form form) {
+    final item = row.item;
+    final line = row.line;
+
+    if (item.countType == CountType.container) {
+      // the same number of containers keeps the saved amount, so nothing changes by rounding
+      final sameIn =
+          form.inContainers == containersIn(line.inQty, item.containerSize!);
+      return CountFix(
+        sealed: form.sealed,
+        level: form.level,
+        exactQty: readNumber(form.exactText),
+        inQty: sameIn ? line.inQty : form.inContainers * item.containerSize!,
+        outCount: form.out,
+        note: form.noteText,
+      );
+    }
+    return CountFix(
+      number: readNumber(form.numberText)!,
+      inQty: readNumber(form.inText)!,
+      outCount: line.outCount,
+      note: form.noteText,
+    );
+  }
+
+  Correction _correctionOf(_Pick pick, _Form form) {
+    return switch (pick.kind) {
+      _Kind.count => CountCorrection(
+        pick.id,
+        _countFix(_rowOf(pick.id)!, form),
+        form.reason,
+      ),
+      _Kind.tally => TallyCorrection(pick.id, form.qty, form.reason),
+      _Kind.dayNote => DayNoteCorrection(form.noteText, form.reason),
+    };
+  }
+
+  // save corrections: every waiting change in 1 go, then back to history with how many were saved
+  Future<void> _saveAll() async {
+    if (_hasUnaddedEdit && !await _confirmDropEdit()) return;
     setState(() => _saving = true);
 
     try {
-      final changed = switch (pick.kind) {
-        _Kind.count => await _fixes.correctCount(
-          widget.dayId,
-          pick.id,
-          _countFix(_rowOf(pick.id)!),
-          reason,
-        ),
-        _Kind.tally => await _fixes.correctTally(
-          widget.dayId,
-          pick.id,
-          _qty,
-          reason,
-        ),
-        _Kind.dayNote => await _fixes.correctDayNote(
-          widget.dayId,
-          _noteBox.text,
-          reason,
-        ),
-      };
-      await _load();
+      final changes = [
+        for (final entry in _waiting.entries)
+          _correctionOf(entry.key, entry.value),
+      ];
+      final saved = await _fixes.saveAll(widget.dayId, changes);
       if (!mounted) return;
-      _select(pick);
-      _message(
-        changed
-            ? 'Correction saved. The owner will get an email about it.'
-            : 'Nothing changed, so nothing was saved.',
-      );
+      // empty now so the back check lets the screen close
+      _waiting.clear();
+      _pick = null;
+      Navigator.of(context).pop(saved);
     } on StateError {
       // the next day got submitted while this screen was open, this day is final now
       _message('This day cant be corrected anymore.');
@@ -201,32 +371,56 @@ class _CorrectionScreenState extends State<CorrectionScreen> {
     }
   }
 
-  // the fix from the form, in base units like everything in the db
-  CountFix _countFix(CountRow row) {
-    final item = row.item;
-    final line = row.line;
-    final note = _noteBox.text;
-
-    if (item.countType == CountType.container) {
-      final exact = readNumber(_exactBox.text);
-      // the same number of containers keeps the saved amount, so nothing changes by rounding
-      final sameIn =
-          _inContainers == containersIn(line.inQty, item.containerSize!);
-      return CountFix(
-        sealed: _sealed,
-        level: _level,
-        exactQty: exact,
-        inQty: sameIn ? line.inQty : _inContainers * item.containerSize!,
-        outCount: _out,
-        note: note,
-      );
+  // cancel or back: asks first if something would be thrown away
+  Future<void> _leave() async {
+    if (_waiting.isNotEmpty || _hasUnaddedEdit) {
+      if (!await _confirmDiscardAll()) return;
     }
-    return CountFix(
-      number: readNumber(_numberBox.text)!,
-      inQty: readNumber(_inBox.text)!,
-      outCount: line.outCount,
-      note: note,
+    if (!mounted) return;
+    _waiting.clear();
+    _pick = null;
+    Navigator.of(context).pop();
+  }
+
+  // the edit on the picked item was not added, asks before throwing it away
+  Future<bool> _confirmDropEdit() {
+    return _confirm(
+      'Discard the change to ${_nameOf(_pick!)}?',
+      'It was not added yet, so it would not be saved.',
     );
+  }
+
+  // the waiting changes, plus the edit on the picked item if it is not added yet
+  Future<bool> _confirmDiscardAll() {
+    final unadded = _hasUnaddedEdit && !_waiting.containsKey(_pick) ? 1 : 0;
+    final count = _waiting.length + unadded;
+    return _confirm(
+      count == 1 ? 'Discard 1 change?' : 'Discard $count changes?',
+      'Nothing will be saved and the owner gets no email.',
+    );
+  }
+
+  // keep editing = false, discard = true, tapping outside the box = false too
+  Future<bool> _confirm(String title, String body) async {
+    final answer = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep editing'),
+          ),
+          FilledButton(
+            key: const Key('discard_button'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    return answer ?? false;
   }
 
   void _message(String text) {
@@ -237,49 +431,73 @@ class _CorrectionScreenState extends State<CorrectionScreen> {
       );
   }
 
+  String get _waitingText {
+    final count = _waiting.length;
+    if (count == 0) return 'Pick something to fix. Each fix needs a reason.';
+    final changes = count == 1 ? '1 change' : '$count changes';
+    return '$changes waiting. Press Save corrections to save them.';
+  }
+
   @override
   Widget build(BuildContext context) {
     final detail = _detail;
     final tally = _tally;
+    final count = _waiting.length;
 
-    return Scaffold(
-      backgroundColor: AppColors.cream,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: detail == null || tally == null
-              ? const Center(child: CircularProgressIndicator())
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    SubmitHeader(
-                      title:
-                          'Correct ${formatLongDate(detail.day.businessDate)}',
-                      subtitle:
-                          'Each fix needs a reason. The owner gets an email.',
-                      actions: [
-                        FilledButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: const Text('Done'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Expanded(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          SizedBox(
-                            width: _listWidth,
-                            child: _pickList(detail, tally),
+    // PopScope = catches the android back button, it goes through the same check as cancel
+    return PopScope(
+      canPop: _waiting.isEmpty && !_hasUnaddedEdit,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _leave();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.cream,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: detail == null || tally == null
+                ? const Center(child: CircularProgressIndicator())
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SubmitHeader(
+                        title:
+                            'Correct ${formatLongDate(detail.day.businessDate)}',
+                        subtitle: _waitingText,
+                        actions: [
+                          OutlinedButton(
+                            key: const Key('cancel_corrections'),
+                            onPressed: _saving ? null : _leave,
+                            child: const Text('Cancel'),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(child: _form()),
+                          FilledButton(
+                            key: const Key('save_corrections'),
+                            onPressed: count == 0 || _saving ? null : _saveAll,
+                            child: Text(
+                              count == 0
+                                  ? 'Save corrections'
+                                  : 'Save corrections ($count)',
+                            ),
+                          ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SizedBox(
+                              width: _listWidth,
+                              child: _pickList(detail, tally),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(child: _form()),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
         ),
       ),
     );
@@ -295,29 +513,63 @@ class _CorrectionScreenState extends State<CorrectionScreen> {
           _pickTile(
             _Pick(_Kind.count, row.item.id!),
             row.item.name,
-            'End ${shownAmount(row.item, row.line.endQty)} · '
-            'In ${shownAmount(row.item, row.line.inQty)} · '
-            'Out ${outText(row.item, row.line)}',
+            _countDetail(row),
           ),
         const ListTitle('Tally'),
         for (final row in tally)
           _pickTile(
             _Pick(_Kind.tally, row.item.id!),
             row.item.name,
-            '× ${row.qty}',
+            '× ${_waiting[_Pick(_Kind.tally, row.item.id!)]?.qty ?? row.qty}',
           ),
         const ListTitle('Day'),
         _pickTile(
           const _Pick(_Kind.dayNote, 0),
           'Day note',
-          detail.day.dayNote ?? 'No day note',
+          _dayNoteDetail(detail),
         ),
       ],
     );
   }
 
+  // End, In and Out under the name, the new values when a change is waiting
+  String _countDetail(CountRow row) {
+    final item = row.item;
+    final line = row.line;
+    final form = _waiting[_Pick(_Kind.count, item.id!)];
+    if (form == null) {
+      return 'End ${shownAmount(item, line.endQty)} · '
+          'In ${shownAmount(item, line.inQty)} · '
+          'Out ${outText(item, line)}';
+    }
+
+    // same as outText but with the new values
+    final fix = _countFix(row, form);
+    final end = diffCount(item, line, fix).end;
+    final String out;
+    if (item.countType == CountType.container) {
+      out = '${fix.outCount}';
+    } else if (line.isOpening) {
+      out = '—';
+    } else {
+      out = formatAmount(
+        amountUsed(start: line.startQty, inQty: fix.inQty, end: end),
+      );
+    }
+    return 'End ${shownAmount(item, end)} · '
+        'In ${shownAmount(item, fix.inQty)} · '
+        'Out $out';
+  }
+
+  String _dayNoteDetail(HistoryDetail detail) {
+    final form = _waiting[const _Pick(_Kind.dayNote, 0)];
+    final note = form == null ? detail.day.dayNote : cleanNote(form.noteText);
+    return note ?? 'No day note';
+  }
+
   Widget _pickTile(_Pick pick, String title, String detail) {
     final isPicked = pick == _pick;
+    final isWaiting = _waiting.containsKey(pick);
 
     // Material + InkWell = tap ripple, the picked one gets a cream background
     return Material(
@@ -329,16 +581,26 @@ class _CorrectionScreenState extends State<CorrectionScreen> {
         onTap: () => _select(pick),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-              Text(
-                detail,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    Text(
+                      detail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
               ),
+              if (isWaiting) const _ChangedBadge(),
             ],
           ),
         ),
@@ -346,37 +608,24 @@ class _CorrectionScreenState extends State<CorrectionScreen> {
     );
   }
 
-  // the right side: the fields of the picked thing, then the reason and save
+  // the right side: the fields of the picked thing, then the reason and add change
   Widget _form() {
     final pick = _pick;
-    if (pick == null) {
-      return const SubmitCard(
-        child: Center(
-          child: EmptyLine(
-            'Pick an item, a tally line or the day note on the left.',
-            icon: Icons.touch_app_outlined,
-          ),
-        ),
-      );
-    }
+    if (pick == null) return const SubmitCard(child: _PickHint());
 
     final text = Theme.of(context).textTheme;
     final List<Widget> fields;
-    final String title;
     switch (pick.kind) {
       case _Kind.count:
-        final row = _rowOf(pick.id)!;
-        title = row.item.name;
-        fields = _countFields(row);
+        fields = _countFields(_rowOf(pick.id)!);
       case _Kind.tally:
-        title = _tally!.firstWhere((row) => row.item.id == pick.id).item.name;
         fields = [_stepper('How many', _qty, (value) => _qty = value, 'qty')];
       case _Kind.dayNote:
-        title = 'Day note';
         fields = [
           _textBox(_noteBox, 'Day note', 'day_note_field', maxLines: 3),
         ];
     }
+    final isWaiting = _waiting.containsKey(pick);
 
     return SubmitCard(
       padding: 0,
@@ -384,7 +633,12 @@ class _CorrectionScreenState extends State<CorrectionScreen> {
         key: const Key('correction_form'),
         padding: const EdgeInsets.all(16),
         children: [
-          Text(title, style: text.titleMedium),
+          Row(
+            children: [
+              Expanded(child: Text(_nameOf(pick), style: text.titleMedium)),
+              if (isWaiting) const _ChangedBadge(),
+            ],
+          ),
           const SizedBox(height: 12),
           ...fields,
           const SizedBox(height: 16),
@@ -392,13 +646,24 @@ class _CorrectionScreenState extends State<CorrectionScreen> {
           const SizedBox(height: 16),
           _textBox(_reasonBox, 'Reason (needed)', 'reason_field'),
           const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton(
-              key: const Key('save_correction'),
-              onPressed: _canSave ? _save : null,
-              child: const Text('Save correction'),
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              if (isWaiting) ...[
+                TextButton.icon(
+                  key: const Key('undo_change'),
+                  onPressed: _saving ? null : _undo,
+                  icon: const Icon(Icons.undo),
+                  label: const Text('Undo change'),
+                ),
+                const SizedBox(width: 10),
+              ],
+              FilledButton(
+                key: const Key('add_change'),
+                onPressed: _canAdd ? _add : null,
+                child: Text(isWaiting ? 'Update change' : 'Add change'),
+              ),
+            ],
           ),
         ],
       ),
@@ -515,7 +780,7 @@ class _CorrectionScreenState extends State<CorrectionScreen> {
     );
   }
 
-  // a number box with its unit, setState on every change so the save button updates
+  // a number box with its unit, setState on every change so the add button updates
   Widget _amountBox(
     TextEditingController controller,
     String label,
@@ -549,6 +814,59 @@ class _CorrectionScreenState extends State<CorrectionScreen> {
       maxLines: maxLines,
       onChanged: (_) => setState(() {}),
       decoration: InputDecoration(labelText: label),
+    );
+  }
+}
+
+// small amber "Changed" tag on an item with a waiting change
+class _ChangedBadge extends StatelessWidget {
+  const _ChangedBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.warnBg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: const Text(
+        'Changed',
+        style: TextStyle(
+          color: AppColors.warnText,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+// what the right side shows before anything is picked, big and in the middle
+class _PickHint extends StatelessWidget {
+  const _PickHint();
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.touch_app_outlined,
+            size: 64,
+            color: AppColors.textMuted,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Pick an item, a tally line or the day note on the left.',
+            textAlign: TextAlign.center,
+            style: text.titleMedium?.copyWith(color: AppColors.textMuted),
+          ),
+        ],
+      ),
     );
   }
 }
