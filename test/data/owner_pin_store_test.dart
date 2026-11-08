@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:brewmanager/data/email_settings_store.dart';
 import 'package:brewmanager/data/owner_pin_store.dart';
 
 import '../helpers/test_database.dart';
@@ -82,5 +83,61 @@ void main() {
     expect(() => store.setPin('123'), throwsArgumentError);
     expect(() => store.setPin('12ab'), throwsArgumentError);
     expect(await store.hasPin(), isFalse);
+  });
+
+  group('recovery email', () {
+    Future<List<Map<String, Object?>>> recoveryEmails() {
+      return db.query('outbox', where: "kind = 'recovery'");
+    }
+
+    test('no owner email, no recovery email', () async {
+      await store.setPin('1234');
+
+      expect(await recoveryEmails(), isEmpty);
+    });
+
+    test('with an owner email, the new code is queued', () async {
+      await db.insert('app_settings', {
+        'key': EmailSettingsStore.ownerEmailKey,
+        'value': 'owner@example.com',
+      });
+
+      final code = await store.setPin('1234');
+
+      final email = (await recoveryEmails()).single;
+      expect(email['status'], 'queued');
+      expect(email['day_id'], isNull);
+      expect(email['html_body'], contains(code));
+    });
+
+    test(
+      'a new pin replaces the unsent email, its code stopped working',
+      () async {
+        await db.insert('app_settings', {
+          'key': EmailSettingsStore.ownerEmailKey,
+          'value': 'owner@example.com',
+        });
+        final oldCode = await store.setPin('1234');
+
+        final newCode = await store.setPin('5678');
+
+        final email = (await recoveryEmails()).single;
+        expect(email['html_body'], contains(newCode));
+        expect(email['html_body'], isNot(contains(oldCode)));
+      },
+    );
+
+    test('a sent recovery email stays in the outbox log', () async {
+      await db.insert('app_settings', {
+        'key': EmailSettingsStore.ownerEmailKey,
+        'value': 'owner@example.com',
+      });
+      await store.setPin('1234');
+      await db.update('outbox', {'status': 'sent', 'html_body': ''});
+
+      await store.setPin('5678');
+
+      expect(await recoveryEmails(), hasLength(2));
+    });
   });
 }

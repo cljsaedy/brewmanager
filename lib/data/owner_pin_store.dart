@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../security/pin_hasher.dart';
+import 'email_settings_store.dart';
 
 // saves and checks the owner pin and recovery code in the app_settings table
 // only hashes + salts are saved, never the plain pin or code
@@ -45,9 +46,35 @@ class OwnerPinStore {
         PinHasher.hash(PinHasher.normalizeRecoveryCode(code), codeSalt),
       );
       await _write(txn, recoverySaltKey, codeSalt);
+      await _queueRecoveryEmail(txn, code);
     });
 
     return code;
+  }
+
+  // emails the new code to the owner too, only if an owner email is set (rule 11)
+  // an older recovery email that wasnt sent yet is removed first, its code just stopped working
+  // the body gets blanked after it is sent (see OutboxSender) so the plain code doesnt stay in the db
+  Future<void> _queueRecoveryEmail(Transaction txn, String code) async {
+    final rows = await txn.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [EmailSettingsStore.ownerEmailKey],
+    );
+    if (rows.isEmpty) return;
+
+    await txn.delete('outbox', where: "kind = 'recovery' AND status != 'sent'");
+    await txn.insert('outbox', {
+      'kind': 'recovery',
+      'subject': 'BrewManager PIN recovery code',
+      'html_body':
+          '<p>Your new owner PIN recovery code is:</p>'
+          '<h2>$code</h2>'
+          '<p>Use it on the "Forgot PIN?" screen if you forget your PIN. '
+          'Each time the PIN is set, a new code replaces this one.</p>',
+      'created_at': DateTime.now().toUtc().toIso8601String(),
+    });
   }
 
   // true when the typed pin matches the saved one

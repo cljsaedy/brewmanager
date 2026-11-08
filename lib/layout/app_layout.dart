@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../count/count_tab.dart';
@@ -65,6 +67,8 @@ class _AppLayoutState extends State<AppLayout> with RouteAware {
   // goes up when the owner section closes, the new key makes the count tab start fresh
   // so an open panel never shows an item the owner just changed
   int _countTabVersion = 0;
+  // true once the outbox was sent on start, reopening after the owner section doesnt send again
+  bool _outboxStarted = false;
 
   @override
   void initState() {
@@ -99,6 +103,12 @@ class _AppLayoutState extends State<AppLayout> with RouteAware {
   // gets the draft day ready and reads it, then redraws
   Future<void> _loadDraft() async {
     final store = await widget.openCountStore();
+    if (!_outboxStarted) {
+      _outboxStarted = true;
+      // emails left waiting from before (like no internet last time) go out now (rule 10)
+      // unawaited = it runs on its own, the count tab doesnt wait for it, and it never throws
+      unawaited(store.outbox.sendAll());
+    }
     final draft = await store.loadDraft();
     // mounted = this screen is still open
     if (!mounted) return;

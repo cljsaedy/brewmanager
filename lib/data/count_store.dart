@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 import '../logic/business_day.dart';
 import '../logic/clock.dart';
 import '../logic/count_math.dart';
+import '../email/outbox_sender.dart';
 import '../logic/units.dart';
 import '../report/ai_summary.dart';
 import '../security/key_store.dart';
@@ -18,7 +19,7 @@ import 'tally_store.dart';
 
 // the draft day and its count lines (rule 3 and rule 5)
 class CountStore {
-  // keys and httpClient are only for the ai summary, tests pass fakes, null = the real ones
+  // keys and httpClient are only for the ai summary and sending emails, tests pass fakes, null = the real ones
   CountStore(
     this._db, {
     Clock clock = utcNow,
@@ -39,6 +40,9 @@ class CountStore {
 
   // the ai summary of a submitted day, tried right after submit (rule 10)
   AiSummary get aiSummary => AiSummary(_db, _keys, _http);
+
+  // sends the emails waiting in the outbox, after submit and when the app starts (rule 10)
+  OutboxSender get outbox => OutboxSender(_db, _keys, _http, clock: _clock);
 
   // the tally of the same days, it uses this same db
   TallyStore get tally => TallyStore(_db);

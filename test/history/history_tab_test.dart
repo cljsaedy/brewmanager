@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:brewmanager/security/key_store.dart';
 import 'package:brewmanager/data/count_store.dart';
 import 'package:brewmanager/data/menu_item.dart';
 import 'package:brewmanager/data/menu_item_store.dart';
@@ -37,7 +38,8 @@ void main() {
   setUp(() async {
     db = await openTestDatabase(noIsolate: true);
     now = DateTime.utc(2026, 11, 1, 10);
-    store = CountStore(db, clock: () => now);
+    // empty fake keys, so submit never touches secure storage or the internet
+    store = CountStore(db, clock: () => now, keys: MemoryKeyStore());
   });
 
   tearDown(() async {

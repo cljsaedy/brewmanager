@@ -5,6 +5,7 @@ import '../data/count_line.dart';
 import '../data/count_store.dart';
 import '../data/stock_item.dart';
 import '../data/submit_store.dart';
+import '../email/outbox_sender.dart';
 import '../logic/business_day.dart';
 import '../logic/count_math.dart';
 import '../logic/formatting.dart';
@@ -42,6 +43,8 @@ class _SubmitScreenState extends State<SubmitScreen> {
   bool _submitting = false;
   // restock recommended items, filled once submitted
   List<String> _restockItems = const [];
+  // the daily email after the send try, null if there is none
+  EmailStatus? _emailStatus;
 
   @override
   void initState() {
@@ -143,9 +146,14 @@ class _SubmitScreenState extends State<SubmitScreen> {
       // the day is submitted and its email is queued with the template summary,
       // now try the ai one, it never throws and keeps the template if anything goes wrong
       await widget.store.aiSummary.improve(dayId);
+      // then send it, with anything older still waiting (rule 10), it never throws
+      final outbox = widget.store.outbox;
+      await outbox.sendAll();
+      final emailStatus = await outbox.dailyStatus(dayId);
       final restock = await store.restockItems(dayId);
       if (!mounted) return;
       setState(() {
+        _emailStatus = emailStatus;
         _restockItems = restock;
         _step = _Step.done;
       });
@@ -496,15 +504,69 @@ class _SubmitScreenState extends State<SubmitScreen> {
                 textAlign: TextAlign.center,
                 style: text.headlineSmall,
               ),
-              const SizedBox(height: 6),
-              Text(
-                'Owner email comes in Feature 9.',
-                textAlign: TextAlign.center,
-                style: text.bodySmall,
-              ),
+              const SizedBox(height: 12),
+              _emailLine(text),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // the daily email's status: sent, waiting for internet, or failed with why (rule 10)
+  Widget _emailLine(TextTheme text) {
+    final status = _emailStatus;
+    final (
+      IconData icon,
+      Color color,
+      Color background,
+      String words,
+    ) = switch (status?.state) {
+      EmailState.sent => (
+        Icons.mark_email_read_outlined,
+        AppColors.okText,
+        AppColors.okBg,
+        'Sent: the report was emailed to the owner.',
+      ),
+      EmailState.failed => (
+        Icons.error_outline,
+        AppColors.errorText,
+        AppColors.errorBg,
+        'Failed: the email did not go out. It will be tried again '
+            'the next time the app opens.',
+      ),
+      _ when status?.needsSettings ?? false => (
+        Icons.schedule_send_outlined,
+        AppColors.warnText,
+        AppColors.warnBg,
+        'Waiting: the owner needs to set the emails and Mailjet keys '
+            'in Settings.',
+      ),
+      _ => (
+        Icons.wifi_off,
+        AppColors.warnText,
+        AppColors.warnBg,
+        'Waiting for internet: the report sends the next time the app '
+            'opens or a day is submitted.',
+      ),
+    };
+
+    return Container(
+      key: const Key('email_status'),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(AppTheme.buttonRadius),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 20, color: color),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(words, style: text.bodyMedium?.copyWith(color: color)),
+          ),
+        ],
       ),
     );
   }

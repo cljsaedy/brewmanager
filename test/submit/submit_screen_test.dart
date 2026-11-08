@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:brewmanager/data/email_settings_store.dart';
+import 'package:brewmanager/security/key_store.dart';
 import 'package:brewmanager/data/count_store.dart';
 import 'package:brewmanager/data/menu_item.dart';
 import 'package:brewmanager/data/menu_item_store.dart';
@@ -45,7 +49,8 @@ void main() {
   // adds fries with a recipe and makes the draft dated nov 1
   Future<void> setUpDay() async {
     now = DateTime.utc(2026, 11, 1, 10);
-    store = CountStore(db, clock: () => now);
+    // empty fake keys, so submit never touches secure storage or the internet
+    store = CountStore(db, clock: () => now, keys: MemoryKeyStore());
     friesId = await StockItemStore(db).add(friesPack);
     final menu = MenuItemStore(db);
     friesMenuId = await menu.add(
@@ -265,6 +270,14 @@ void main() {
       await waitForDb(tester);
 
       expect(find.text('Submitted Sun, Nov 1'), findsOneWidget);
+      // no emails or mailjet keys in this test
+      expect(
+        find.text(
+          'Waiting: the owner needs to set the emails and Mailjet keys '
+          'in Settings.',
+        ),
+        findsOneWidget,
+      );
       // the fries are at 0, at or below their level of 5
       expect(find.text('Restock recommended'), findsOneWidget);
       expect(find.text('Fries pack'), findsOneWidget);
@@ -274,6 +287,43 @@ void main() {
 
       expect(find.text('Mon, Nov 2'), findsOneWidget);
       expect(find.text('Draft'), findsOneWidget);
+    });
+
+    testWidgets('the report is sent and the screen says so', (tester) async {
+      final keys = MemoryKeyStore()
+        ..values[ApiKey.mailjetKey] = 'test-key'
+        ..values[ApiKey.mailjetSecret] = 'test-secret';
+      var emails = 0;
+      // a fake mailjet that takes every email
+      final mailjet = MockClient((_) async {
+        emails++;
+        return http.Response('{"Messages":[{"Status":"success"}]}', 200);
+      });
+      await tester.runAsync(() async {
+        await setUpDay();
+        // after setUpDay, it makes its own store with no keys
+        store = CountStore(
+          db,
+          clock: () => now,
+          keys: keys,
+          httpClient: mailjet,
+        );
+        await EmailSettingsStore(db, keys).saveEmails(
+          ownerEmail: 'owner@example.com',
+          senderEmail: 'reports@example.com',
+        );
+      });
+      await openApp(tester);
+      await goToDateStep(tester);
+
+      await tester.tap(find.text('Submit'));
+      await waitForDb(tester);
+
+      expect(
+        find.text('Sent: the report was emailed to the owner.'),
+        findsOneWidget,
+      );
+      expect(emails, 1);
     });
 
     testWidgets('a double tap on submit only submits once', (tester) async {
