@@ -2,20 +2,24 @@ import 'package:flutter/material.dart';
 
 import '../count/count_cells.dart';
 import '../data/count_line.dart';
+import '../data/count_store.dart';
 import '../data/history_store.dart';
 import '../logic/formatting.dart';
+import '../report/correction_email.dart';
 import '../theme/app_theme.dart';
 import '../widgets/category_title.dart';
 import '../widgets/status_chip.dart';
+import 'correction_screen.dart';
 
 // the barista's history: past days on the left, the picked day on the right
-// it only shows what was counted, tallied and written, never expected numbers
-// corrections come in feature 8b
+// it only shows what was counted, tallied, written and corrected, never expected numbers
+// the latest submitted day has a correct button (rule 4)
 class HistoryTab extends StatefulWidget {
   const HistoryTab({super.key, required this.store});
 
   // null while the app is still loading
-  final HistoryStore? store;
+  // the count store and not the history store, since it also gives the corrections and tally
+  final CountStore? store;
 
   @override
   State<HistoryTab> createState() => _HistoryTabState();
@@ -33,8 +37,11 @@ class _HistoryTabState extends State<HistoryTab> {
   // null while loading
   List<BusinessDay>? _days;
   int? _selectedId;
-  // the picked day, null while it loads
+  // the picked day and its corrections, null while it loads
   HistoryDetail? _detail;
+  List<CorrectionEntry> _corrections = const [];
+  // the only day the correct button shows on, null before the first submit
+  int? _correctableId;
 
   @override
   void initState() {
@@ -47,10 +54,14 @@ class _HistoryTabState extends State<HistoryTab> {
     final store = widget.store;
     if (store == null) return;
 
-    final days = await store.days();
+    final days = await store.history.days();
+    final correctableId = await store.corrections.correctableDayId();
     // mounted = this screen is still open
     if (!mounted) return;
-    setState(() => _days = days);
+    setState(() {
+      _days = days;
+      _correctableId = correctableId;
+    });
     if (days.isNotEmpty) await _select(days.first.id);
   }
 
@@ -59,10 +70,25 @@ class _HistoryTabState extends State<HistoryTab> {
       _selectedId = dayId;
       _detail = null;
     });
-    final detail = await widget.store!.detail(dayId);
+    final store = widget.store!;
+    final detail = await store.history.detail(dayId);
+    final corrections = await store.corrections.corrections(dayId);
     // a fast tap on another day could have come first, then this one is old
     if (!mounted || _selectedId != dayId) return;
-    setState(() => _detail = detail);
+    setState(() {
+      _detail = detail;
+      _corrections = corrections;
+    });
+  }
+
+  // correct tapped: opens the correct screen
+  // when it closes the app layout starts this tab fresh, so the new numbers and corrections show
+  Future<void> _openCorrect(int dayId) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CorrectionScreen(store: widget.store!, dayId: dayId),
+      ),
+    );
   }
 
   @override
@@ -199,6 +225,7 @@ class _HistoryTabState extends State<HistoryTab> {
                       _sectionTitle(context, 'Day note'),
                       Text(day.dayNote!),
                     ],
+                    ..._correctionSection(context),
                   ],
                 ),
         ),
@@ -234,6 +261,16 @@ class _HistoryTabState extends State<HistoryTab> {
             ),
           ),
           _statusChip(day),
+          // only the newest submitted day, until the next day is submitted (rule 4)
+          if (day.id == _correctableId) ...[
+            const SizedBox(width: 12),
+            OutlinedButton.icon(
+              key: const Key('correct_button'),
+              onPressed: () => _openCorrect(day.id),
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: const Text('Correct'),
+            ),
+          ],
         ],
       ),
     );
@@ -392,6 +429,54 @@ class _HistoryTabState extends State<HistoryTab> {
               Text(
                 '× ${row.qty}',
                 style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
+    ];
+  }
+
+  // every fix on this day, oldest first, nothing when there are none
+  // like "Fries pack End 5 → 6 pcs" with "Reason: typo · 6:12pm" under it
+  List<Widget> _correctionSection(BuildContext context) {
+    if (_corrections.isEmpty) return const [];
+    final small = Theme.of(context).textTheme.bodySmall;
+
+    return [
+      _sectionTitle(context, 'Corrections'),
+      for (final entry in _corrections)
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: AppColors.divider)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(top: 2, right: 10),
+                child: Icon(
+                  Icons.edit_note,
+                  size: 18,
+                  color: AppColors.warnText,
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      entry.description,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    // the db keeps utc, the tablet shows its own time
+                    Text(
+                      'Reason: ${entry.reason} · '
+                      '${formatTime(DateTime.parse(entry.correctedAt).toLocal())}',
+                      style: small,
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

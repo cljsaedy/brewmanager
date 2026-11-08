@@ -9,8 +9,8 @@ import '../logic/units.dart';
 import '../theme/app_theme.dart';
 import 'count_badges.dart';
 
-// the opened level buttons in the order they show on screen
-const Map<String, double> _levelButtons = {
+// the opened level buttons in the order they show on screen, the correction form uses them too
+const Map<String, double> levelButtons = {
   'None': levelNone,
   'Almost empty': levelAlmostEmpty,
   '25%': level25,
@@ -273,7 +273,7 @@ class _CountPanelState extends State<CountPanel> {
     if (exact != null) {
       return formatWithUnit(exact, widget.row.item.baseUnit.name);
     }
-    for (final button in _levelButtons.entries) {
+    for (final button in levelButtons.entries) {
       if (button.value == _level) return button.key;
     }
     return '';
@@ -458,7 +458,7 @@ class _CountPanelState extends State<CountPanel> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            for (final button in _levelButtons.entries)
+            for (final button in levelButtons.entries)
               ChoiceChip(
                 label: Text(button.key),
                 selected: _exactQty == null && _level == button.value,

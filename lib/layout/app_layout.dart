@@ -236,7 +236,7 @@ class _AppLayoutState extends State<AppLayout> with RouteAware {
                             key: ValueKey(
                               '$_countTabVersion-${_draft?.day.id}',
                             ),
-                            store: _countStore?.history,
+                            store: _countStore,
                           ),
                         ],
                       ),

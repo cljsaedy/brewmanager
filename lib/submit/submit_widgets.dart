@@ -34,15 +34,15 @@ class SubmitHeader extends StatelessWidget {
     super.key,
     required this.title,
     required this.subtitle,
-    required this.stepIndex,
+    this.stepIndex,
     required this.actions,
   });
 
   final String title;
   // the small text under the title
   final String subtitle;
-  // which step is open, 0 = the first one
-  final int stepIndex;
+  // which step is open, 0 = the first one, null = no step tracker (the correct screen has no steps)
+  final int? stepIndex;
   final List<Widget> actions;
 
   @override
@@ -71,8 +71,10 @@ class SubmitHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          _StepTracker(stepIndex: stepIndex),
-          const SizedBox(width: 20),
+          if (stepIndex != null) ...[
+            _StepTracker(stepIndex: stepIndex!),
+            const SizedBox(width: 20),
+          ],
           for (final action in actions) ...[
             action,
             if (action != actions.last) const SizedBox(width: 10),
