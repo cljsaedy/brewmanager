@@ -381,7 +381,7 @@ void main() {
         expect(html, contains('>Today</div>'));
         expect(html, contains('>Restock</div>'));
         // the summary header, not the gaps box on top
-      expect(html, isNot(contains('color:#C8873A;">Gaps</div>')));
+        expect(html, isNot(contains('color:#C8873A;">Gaps</div>')));
         expect(html, contains('Everything else looks fine.'));
       },
     );

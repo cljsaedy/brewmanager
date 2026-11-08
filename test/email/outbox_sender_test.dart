@@ -207,4 +207,28 @@ void main() {
     expect(status!.state, EmailState.sent);
     expect(await sender(mailjetOk()).dailyStatus(dayId + 1), isNull);
   });
+
+  test('resend sends a sent email again', () async {
+    await setUpSettings();
+    final id = await queue('daily');
+    await sender(mailjetOk()).sendAll();
+
+    await sender(mailjetOk()).resend(id);
+
+    expect(sent, hasLength(2));
+    final row = await rowOf(id);
+    expect(row['status'], 'sent');
+    expect(row['attempts'], 2);
+  });
+
+  test('a recovery email is never resent', () async {
+    await setUpSettings();
+    final id = await queue('recovery', body: '<h2>7KQ2-M9XA</h2>');
+    await sender(mailjetOk()).sendAll();
+
+    await sender(mailjetOk()).resend(id);
+
+    expect(sent, hasLength(1));
+    expect((await rowOf(id))['status'], 'sent');
+  });
 }

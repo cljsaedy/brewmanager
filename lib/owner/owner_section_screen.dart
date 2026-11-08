@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
 
+import '../data/analytics_store.dart';
 import '../data/email_settings_store.dart';
 import '../data/menu_item_store.dart';
 import '../data/recipe_store.dart';
+import '../data/sent_reports_store.dart';
 import '../data/stock_item_store.dart';
+import '../email/outbox_sender.dart';
 import '../layout/side_rail.dart';
 import '../security/key_store.dart';
-import '../widgets/placeholder_tab.dart';
+import 'analytics/analytics_tab.dart';
 import 'menu/menu_tab.dart';
+import 'reports/reports_tab.dart';
 import 'settings/settings_tab.dart';
 import 'stock_items/stock_items_tab.dart';
 
@@ -16,12 +21,22 @@ import 'stock_items/stock_items_tab.dart';
 // "unlocked" is not saved anywhere: the owner is unlocked only while this screen is open,
 // so leaving it in any way (lock button, back, home) means the pin is needed again
 class OwnerSectionScreen extends StatefulWidget {
-  const OwnerSectionScreen({super.key, required this.db, this.keys});
+  const OwnerSectionScreen({
+    super.key,
+    required this.db,
+    this.keys,
+    this.httpClient,
+    this.emailViewer,
+  });
 
   // the app's db (or the test db in tests), the owner tabs read and save through it
   final Database db;
   // where the api keys are kept, null = the real secure storage (tests pass a memory one)
   final KeyStore? keys;
+  // for resend in reports, null = a real one (tests pass a fake mailjet)
+  final http.Client? httpClient;
+  // shows an email in reports, null = the webview (tests pass a simple one, a webview cant run in tests)
+  final EmailViewBuilder? emailViewer;
 
   @override
   State<OwnerSectionScreen> createState() => _OwnerSectionScreenState();
@@ -44,10 +59,16 @@ class _OwnerSectionScreenState extends State<OwnerSectionScreen> {
   late final StockItemStore _stockStore = StockItemStore(widget.db);
   late final MenuItemStore _menuStore = MenuItemStore(widget.db);
   late final RecipeStore _recipeStore = RecipeStore(widget.db);
+  late final KeyStore _keys = widget.keys ?? SecureKeyStore();
   late final EmailSettingsStore _emailStore = EmailSettingsStore(
     widget.db,
-    widget.keys ?? SecureKeyStore(),
+    _keys,
   );
+  // made here only when no client was given, so only then this screen closes it
+  late final http.Client _http = widget.httpClient ?? http.Client();
+  late final OutboxSender _sender = OutboxSender(widget.db, _keys, _http);
+  late final SentReportsStore _reports = SentReportsStore(widget.db);
+  late final AnalyticsStore _analytics = AnalyticsStore(widget.db);
 
   // listens for the app going to the background
   late final AppLifecycleListener _lifecycle;
@@ -62,6 +83,7 @@ class _OwnerSectionScreenState extends State<OwnerSectionScreen> {
   @override
   void dispose() {
     _lifecycle.dispose();
+    if (widget.httpClient == null) _http.close();
     super.dispose();
   }
 
@@ -97,14 +119,14 @@ class _OwnerSectionScreenState extends State<OwnerSectionScreen> {
                 child: IndexedStack(
                   index: _selectedIndex,
                   children: [
-                    const PlaceholderTab(
-                      title: 'Analytics',
-                      note: 'The usage chart comes in Feature 10.',
-                    ),
-                    const PlaceholderTab(
-                      title: 'Reports',
-                      note: 'Sent reports come in Feature 10.',
-                    ),
+                    AnalyticsTab(store: _analytics),
+                    widget.emailViewer == null
+                        ? ReportsTab(store: _reports, sender: _sender)
+                        : ReportsTab(
+                            store: _reports,
+                            sender: _sender,
+                            viewer: widget.emailViewer!,
+                          ),
                     MenuTab(
                       store: _menuStore,
                       recipes: _recipeStore,

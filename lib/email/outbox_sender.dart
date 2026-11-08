@@ -67,6 +67,24 @@ class OutboxSender {
     return run;
   }
 
+  // resend from the owner's reports tab: puts 1 email back in the queue (even a sent one), then sends
+  // everything waiting, oldest first like always, so the run lock still stops a double send
+  // a recovery email is never resent, its body was blanked after sending (rule 11)
+  Future<void> resend(int id) async {
+    try {
+      await _db.update(
+        'outbox',
+        {'status': 'queued'},
+        where: "id = ? AND kind != 'recovery'",
+        whereArgs: [id],
+      );
+    } catch (_) {
+      // the db closing, nothing to resend then
+      return;
+    }
+    await sendAll();
+  }
+
   Future<void> _sendAllNow() async {
     try {
       final rows = await _db.query(
