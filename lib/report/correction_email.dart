@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import '../count/count_cells.dart';
 import '../data/count_line.dart';
 import '../data/stock_item.dart';
@@ -83,26 +81,45 @@ String correctionSubject(String date) =>
     'Correction on ${formatLongDate(date)}';
 
 // a short correction email: what changed and why, then the corrected count table (rule 4)
-// plain html with a table, no attachments, feature 9 sends it from the outbox
-// every text from the db goes through escape so a note with < or & cant break the email
+// same look as the daily email (brown header, light tables), no attachments
+// every text from the db is escaped inside the helpers so a note with < or & cant break the email
 String correctionEmailHtml({
   required String date,
   required List<CorrectionEntry> changes,
   required List<CountRow> rows,
 }) {
-  const escape = HtmlEscape();
-  final html = StringBuffer()
-    ..writeln('<h2>${escape.convert(correctionSubject(date))}</h2>')
-    ..writeln('<ul>');
-  for (final change in changes) {
-    html.writeln(
-      '<li>${escape.convert(change.description)}. '
-      'Reason: ${escape.convert(change.reason)}.</li>',
-    );
-  }
-  html
-    ..writeln('</ul>')
-    ..writeln('<h3>Corrected count</h3>')
+  final body = StringBuffer()
+    ..write(
+      sectionTitle(
+        'What changed',
+        hint: 'Each change with the reason the staff gave.',
+      ),
+    )
+    ..write(
+      bulletList([
+        for (final change in changes)
+          '${change.description}. Reason: ${change.reason}.',
+      ]),
+    )
+    ..write(
+      paragraph(
+        "The day's usage numbers were worked out again with these changes.",
+        muted: true,
+      ),
+    )
+    ..write(
+      sectionTitle(
+        'Corrected count',
+        hint:
+            'The full logbook after the changes. Container items are in containers.',
+      ),
+    )
     ..write(countTableHtml(rows));
-  return html.toString();
+
+  return emailPage(
+    label: 'BrewManager · Correction',
+    title: formatLongDate(date),
+    subtitle: '${changes.length} ${changes.length == 1 ? 'change' : 'changes'}',
+    body: body.toString(),
+  );
 }

@@ -10,6 +10,7 @@ import 'daily_email.dart';
 import 'groq_client.dart';
 import 'number_check.dart';
 import 'report_facts.dart';
+import 'template_summary.dart';
 
 // what happened when the app tried the ai summary
 // saved in business_days.ai_outcome so the evaluation can count passed vs fell back (chapter 4)
@@ -112,7 +113,13 @@ class AiSummary {
       return await _db.transaction((txn) async {
         final changed = await txn.update(
           'outbox',
-          {'html_body': dailyEmailHtml(report, text)},
+          {
+            'html_body': dailyEmailHtml(
+              report,
+              summaryBullets(text),
+              fromAi: true,
+            ),
+          },
           where: "kind = 'daily' AND day_id = ? AND status = 'queued'",
           whereArgs: [dayId],
         );

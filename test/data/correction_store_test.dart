@@ -270,7 +270,9 @@ void main() {
       expect(email['subject'], 'Correction on Mon, Nov 2');
       final body = email['html_body'] as String;
       expect(body, contains('Fries pack End 5 → 6 pcs. Reason: typo.'));
-      expect(body, contains('<td>Fries pack</td>'));
+      // the corrected count table is in it
+      expect(body, contains('Corrected count</h3>'));
+      expect(body, contains('>Fries pack</td>'));
     });
 
     test('a container End shows in containers', () async {

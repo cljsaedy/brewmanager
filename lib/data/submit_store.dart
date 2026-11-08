@@ -268,7 +268,11 @@ class SubmitStore {
       'kind': 'daily',
       'day_id': dayId,
       'subject': dailySubject(date),
-      'html_body': dailyEmailHtml(report, templateSummary(report)),
+      'html_body': dailyEmailHtml(
+        report,
+        templateSummary(report),
+        fromAi: false,
+      ),
       'created_at': createdAt,
     });
     await txn.update(

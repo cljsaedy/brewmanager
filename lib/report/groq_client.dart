@@ -36,7 +36,10 @@ Rules:
 - For estimated items, say "about" and do not call the difference a gap.
 - Mention, if present: restock items, exact items with a gap, container checks,
   menu items with no recipe yet, opening counts, closed days, and the day note.
-- Plain English, one paragraph, at most 120 words. No headings, lists or markdown.
+- Plain English, at most 120 words in all.
+- Write 3 to 6 short bullet points, one point per bullet.
+  Start every bullet on its own line with "- ". Most important first: restock, gaps, container checks.
+- Nothing before or after the bullets. No headings, bold or other markdown.
 ''';
 
 // when groq answers with an error, or the answer has no text in it

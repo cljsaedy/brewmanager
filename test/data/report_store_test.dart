@@ -172,17 +172,34 @@ void main() {
     test('the template summary', () async {
       final report = await ReportStore(db).load(await submitNov2());
 
-      expect(
-        templateSummary(report),
-        'Daily count for Mon, Nov 2. '
-        '14 menu items were tallied. '
-        'Restock recommended: Fries pack. '
-        'Fries pack: 1 pack more used than the tally explains. '
+      expect(templateSummary(report), [
+        '14 menu items were tallied.',
+        'Restock recommended: Fries pack.',
+        'Fries pack: 1 pack more used than the tally explains.',
         'Caramel syrup: 1 bottle (1,000 ml) finished. '
-        'Recipes explain 300 ml since Nov 1. '
-        'No recipe yet: Waffle. '
+            'Recipes explain 300 ml since Nov 1.',
+        'No recipe yet: Waffle.',
         'Day note: “power <b>outage</b> at 3pm”.',
+      ]);
+    });
+
+    test('the ai text becomes bullets', () {
+      expect(
+        summaryBullets(
+          '- **14** menu items were tallied.\n\n'
+          '* Fries pack is low.\n'
+          '• Waffle has no recipe yet.\n'
+          'A line with no mark.',
+        ),
+        [
+          '14 menu items were tallied.',
+          'Fries pack is low.',
+          'Waffle has no recipe yet.',
+          'A line with no mark.',
+        ],
       );
+      // a plain paragraph is 1 bullet, nothing is lost
+      expect(summaryBullets('One. Two.'), ['One. Two.']);
     });
   });
 
@@ -218,10 +235,14 @@ void main() {
   group('the email', () {
     test('has the 8 sections in order', () async {
       final report = await ReportStore(db).load(await submitNov2());
-      final html = dailyEmailHtml(report, templateSummary(report));
+      final html = dailyEmailHtml(
+        report,
+        templateSummary(report),
+        fromAi: false,
+      );
 
       final titles = [
-        '<p>Daily count',
+        '14 menu items were tallied.',
         'Restock recommended</h3>',
         'Expected vs. actual</h3>',
         'Container checks</h3>',
@@ -237,26 +258,21 @@ void main() {
 
     test('estimated items have no gap, exact ones do', () async {
       final report = await ReportStore(db).load(await submitNov2());
-      final html = dailyEmailHtml(report, 'summary');
+      // the cells as text, like "Fries pack|3 packs|2 packs|+1 pack|"
+      final cells = cellText(
+        dailyEmailHtml(report, ['summary'], fromAi: false),
+      );
 
       expect(
-        html,
-        contains(
-          '<td>Caramel syrup</td><td>about 1,000 ml (estimated)</td>'
-          '<td>300 ml</td><td>—</td>',
-        ),
+        cells,
+        contains('Caramel syrup|about 1,000 ml (estimated)|300 ml|—|'),
       );
-      expect(
-        html,
-        contains(
-          '<td>Fries pack</td><td>3 packs</td><td>2 packs</td><td>+1 pack</td>',
-        ),
-      );
+      expect(cells, contains('Fries pack|3 packs|2 packs|+1 pack|'));
     });
 
     test('notes are escaped so they cant break the email', () async {
       final report = await ReportStore(db).load(await submitNov2());
-      final html = dailyEmailHtml(report, 'summary');
+      final html = dailyEmailHtml(report, ['summary'], fromAi: false);
 
       expect(html, contains('power &lt;b&gt;outage&lt;&#47;b&gt; at 3pm'));
       expect(html, isNot(contains('<b>outage')));
@@ -264,7 +280,11 @@ void main() {
 
     test('no prices go in the email', () async {
       final report = await ReportStore(db).load(await submitNov2());
-      final html = dailyEmailHtml(report, templateSummary(report));
+      final html = dailyEmailHtml(
+        report,
+        templateSummary(report),
+        fromAi: false,
+      );
 
       expect(html, isNot(contains('₱')));
       expect(html.toLowerCase(), isNot(contains('price')));
@@ -324,13 +344,16 @@ void main() {
 
       final report = await ReportStore(db).load(day.day.id);
       expect(report.closedDates, isEmpty);
-      expect(
-        templateSummary(report),
-        startsWith('Daily count for Tue, Nov 3 (covers Nov 2–3).'),
-      );
+      expect(templateSummary(report), contains('This count covers Nov 2–3.'));
     });
   });
 }
+
+// the email's table cells as plain text, each cell ends with |
+// so a test can check a row without caring about the styles
+String cellText(String html) => html
+    .replaceAll(RegExp(r'</t[dh]>'), '|')
+    .replaceAll(RegExp(r'<[^>]+>'), '');
 
 CountRow rowOf(DraftDay day, int itemId) {
   return day.rows.firstWhere((row) => row.item.id == itemId);

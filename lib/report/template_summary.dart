@@ -8,19 +8,21 @@ const int summaryListMax = 4;
 
 // the fill-in-the-blanks summary, built only from the app's own numbers (rule 10)
 // used when there is no ai summary: no internet, the call failed, or the ai numbers didnt match
-// every sentence is left out when it has nothing to say
-String templateSummary(DailyReport report) {
-  final parts = <String>['Daily count for ${reportDate(report)}.'];
+// gives back bullet points, 1 point each, the email shows them as a list
+// a bullet is left out when it has nothing to say
+// the date is not in here since the email header already shows it
+List<String> templateSummary(DailyReport report) {
+  final bullets = <String>[];
 
   final made = report.madeTotal;
-  parts.add(
+  bullets.add(
     made == 0
         ? 'Nothing was tallied.'
         : '$made ${made == 1 ? 'menu item was' : 'menu items were'} tallied.',
   );
 
   final restock = report.restock;
-  parts.add(
+  bullets.add(
     restock.isEmpty
         ? 'No items need restocking.'
         : 'Restock recommended: '
@@ -28,39 +30,37 @@ String templateSummary(DailyReport report) {
   );
 
   // exact items with a gap that isnt 0, the ones that matched are only in the table
-  final compared = report.compared;
-  final gaps = [
-    for (final row in compared)
-      if (row.gap != null && gapCell(row.item, row.gap!) != '0') row,
-  ];
+  final gaps = gapRows(report);
   final exactCompared = [
-    for (final row in compared)
+    for (final row in report.compared)
       if (row.gap != null) row,
   ];
   if (gaps.isNotEmpty) {
-    parts.addAll([
+    bullets.addAll([
       for (final row in gaps.take(summaryListMax)) gapSentence(row),
     ]);
     if (gaps.length > summaryListMax) {
-      parts.add('${gaps.length - summaryListMax} more gaps are in the table.');
+      bullets.add(
+        '${gaps.length - summaryListMax} more gaps are in the table.',
+      );
     }
   } else if (exactCompared.isNotEmpty) {
-    parts.add('Every exact item matched the recipes.');
+    bullets.add('Every exact item matched the recipes.');
   }
 
   final checks = report.checks;
-  parts.addAll([
+  bullets.addAll([
     for (final check in checks.take(summaryListMax))
       checkSentence(check, report.day.businessDate),
   ]);
   if (checks.length > summaryListMax) {
-    parts.add(
+    bullets.add(
       '${checks.length - summaryListMax} more container checks are in the report.',
     );
   }
 
   if (report.noRecipe.isNotEmpty) {
-    parts.add('No recipe yet: ${_list(report.noRecipe)}.');
+    bullets.add('No recipe yet: ${_list(report.noRecipe)}.');
   }
 
   final opening = [
@@ -68,22 +68,47 @@ String templateSummary(DailyReport report) {
       if (row.isOpening) row.item.name,
   ];
   if (opening.isNotEmpty) {
-    parts.add(
+    bullets.add(
       'Opening count for ${_list(opening)}, comparing starts next count.',
     );
   }
 
+  final from = report.day.coversFrom;
+  if (from != null) {
+    bullets.add(
+      'This count covers ${formatCovers(from, report.day.businessDate)}.',
+    );
+  }
+
   if (report.closedDates.isNotEmpty) {
-    parts.add(
+    bullets.add(
       'Closed: ${_list([for (final date in report.closedDates) formatShortDate(date)])}.',
     );
   }
 
   if (report.day.dayNote != null) {
-    parts.add('Day note: “${report.day.dayNote}”.');
+    bullets.add('Day note: “${report.day.dayNote}”.');
   }
 
-  return parts.join(' ');
+  return bullets;
+}
+
+// turns the ai text into bullet points (rule 10)
+// the ai is told to start every point with "- ", but this takes "* " and "• " too
+// any line without a mark still becomes its own bullet, so a plain paragraph is 1 bullet and nothing is lost
+// ** (markdown bold) is taken out since the email would show the stars as text
+List<String> summaryBullets(String text) {
+  final bullets = <String>[];
+  for (final rawLine in text.split('\n')) {
+    var line = rawLine.trim().replaceAll('**', '');
+    if (line.startsWith('- ') ||
+        line.startsWith('* ') ||
+        line.startsWith('• ')) {
+      line = line.substring(2).trim();
+    }
+    if (line.isNotEmpty) bullets.add(line);
+  }
+  return bullets;
 }
 
 // like "Milk, Cups, Beans and 2 more"

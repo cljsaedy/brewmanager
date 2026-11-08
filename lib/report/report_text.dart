@@ -18,6 +18,13 @@ String gapCell(StockItem item, double gap) {
   return '$sign${amountText(item, gap.abs())}';
 }
 
+// exact items whose gap isnt 0, the ones the summary and the email point out
+// estimated items have no gap so they are never in here (rule 7)
+List<UsageRow> gapRows(DailyReport report) => [
+  for (final row in report.compared)
+    if (row.gap != null && gapCell(row.item, row.gap!) != '0') row,
+];
+
 // the used cell, an estimate always says about (rule 7)
 String usedCell(UsageRow row) {
   if (row.isOpening) return openingText;
