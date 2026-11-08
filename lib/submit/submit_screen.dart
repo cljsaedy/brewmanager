@@ -140,6 +140,9 @@ class _SubmitScreenState extends State<SubmitScreen> {
         date: _chosenDate,
         skippedDaysOpen: _skippedDaysOpen,
       );
+      // the day is submitted and its email is queued with the template summary,
+      // now try the ai one, it never throws and keeps the template if anything goes wrong
+      await widget.store.aiSummary.improve(dayId);
       final restock = await store.restockItems(dayId);
       if (!mounted) return;
       setState(() {

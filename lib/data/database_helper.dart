@@ -19,7 +19,8 @@ class DatabaseHelper {
   // 5 = day_results.actual_qty can be empty (an opening count has no usage, rule 7)
   // 6 = corrections.target can be 'day' too (day note corrections, rule 4)
   // 7 = stock_items.size_unit and low_unit (the unit the owner typed, display only)
-  static const int version = 7;
+  // 8 = business_days.ai_outcome (why the ai summary was or wasnt used, rule 10)
+  static const int version = 8;
 
   // the open database, null until first used
   static Database? _db;
@@ -130,6 +131,14 @@ class DatabaseHelper {
       );
       await db.execute(
         'ALTER TABLE stock_items ADD COLUMN $stockLowUnitColumn',
+      );
+    }
+
+    // 7 -> 8: business days remember why the ai summary was or wasnt used
+    // ADD COLUMN keeps every row, old days get null = not tried
+    if (oldVersion < 8) {
+      await db.execute(
+        'ALTER TABLE business_days ADD COLUMN $dayAiOutcomeColumn',
       );
     }
   }

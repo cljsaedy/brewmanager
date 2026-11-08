@@ -4,6 +4,15 @@ const String stockNeedsOpeningColumn =
     'needs_opening_count INTEGER NOT NULL DEFAULT 0 '
     'CHECK (needs_opening_count IN (0, 1))';
 
+// business_days column: what happened when the app tried the ai summary (rule 10), for the evaluation
+// ai = passed and used, no_key = no groq key, call_failed = no internet / timeout / groq error,
+// check_failed = a number didnt match the facts, already_sent = the email was sent before the ai answered
+// null = not tried (a draft, a closed day, or a day submitted before this column)
+// kept here so the new table and the version 8 upgrade make the exact same column
+const String dayAiOutcomeColumn =
+    "ai_outcome TEXT CHECK (ai_outcome IS NULL OR ai_outcome IN "
+    "('ai', 'no_key', 'call_failed', 'check_failed', 'already_sent'))";
+
 // stock_items columns: the unit the owner typed the container size and the exact low level in (rule 1)
 // display only, the amounts stay in the base unit, null = typed in the base unit
 // kept here so the new table and the version 7 upgrade make the exact same columns
@@ -112,6 +121,7 @@ const List<String> schemaStatements = [
   // one row per business day
   // covers_from is set when one count covers skipped open days
   // summary_source = which summary went into the report, ai or template
+  // ai_outcome = why, see dayAiOutcomeColumn
   '''
   CREATE TABLE business_days (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -122,7 +132,8 @@ const List<String> schemaStatements = [
     day_note       TEXT,
     submitted_at   TEXT,
     summary_source TEXT CHECK (summary_source IS NULL
-                               OR summary_source IN ('ai', 'template'))
+                               OR summary_source IN ('ai', 'template')),
+    $dayAiOutcomeColumn
   )
   ''',
 

@@ -1,11 +1,14 @@
 import 'dart:math';
 
+import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
 
 import '../logic/business_day.dart';
 import '../logic/clock.dart';
 import '../logic/count_math.dart';
 import '../logic/units.dart';
+import '../report/ai_summary.dart';
+import '../security/key_store.dart';
 import 'correction_store.dart';
 import 'count_line.dart';
 import 'history_store.dart';
@@ -15,10 +18,27 @@ import 'tally_store.dart';
 
 // the draft day and its count lines (rule 3 and rule 5)
 class CountStore {
-  CountStore(this._db, {Clock clock = utcNow}) : _clock = clock;
+  // keys and httpClient are only for the ai summary, tests pass fakes, null = the real ones
+  CountStore(
+    this._db, {
+    Clock clock = utcNow,
+    KeyStore? keys,
+    http.Client? httpClient,
+  }) : _clock = clock,
+       _keysGiven = keys,
+       _httpGiven = httpClient;
 
   final Database _db;
   final Clock _clock;
+  final KeyStore? _keysGiven;
+  final http.Client? _httpGiven;
+
+  // made the first time they are used, so a store that never submits never touches secure storage
+  late final KeyStore _keys = _keysGiven ?? SecureKeyStore();
+  late final http.Client _http = _httpGiven ?? http.Client();
+
+  // the ai summary of a submitted day, tried right after submit (rule 10)
+  AiSummary get aiSummary => AiSummary(_db, _keys, _http);
 
   // the tally of the same days, it uses this same db
   TallyStore get tally => TallyStore(_db);

@@ -340,6 +340,10 @@ void main() {
         options: OpenDatabaseOptions(
           version: 1,
           onCreate: (db, version) async {
+            // every real old db has business_days, the version 8 upgrade adds a column to it
+            await db.execute(
+              'CREATE TABLE business_days (id INTEGER PRIMARY KEY)',
+            );
             await db.execute(
               'CREATE TABLE stock_items (id INTEGER PRIMARY KEY, name TEXT)',
             );
@@ -423,6 +427,10 @@ void main() {
               'stock_item_id': 1,
               'amount': 150,
             });
+            // every real old db has business_days, the version 8 upgrade adds a column to it
+            await db.execute(
+              'CREATE TABLE business_days (id INTEGER PRIMARY KEY)',
+            );
             await db.execute(
               'CREATE TABLE stock_items (id INTEGER PRIMARY KEY)',
             );
@@ -456,6 +464,10 @@ void main() {
         options: OpenDatabaseOptions(
           version: 3,
           onCreate: (db, version) async {
+            // every real old db has business_days, the version 8 upgrade adds a column to it
+            await db.execute(
+              'CREATE TABLE business_days (id INTEGER PRIMARY KEY)',
+            );
             await db.execute(
               'CREATE TABLE stock_items (id INTEGER PRIMARY KEY, name TEXT)',
             );
@@ -494,6 +506,10 @@ void main() {
         options: OpenDatabaseOptions(
           version: 4,
           onCreate: (db, version) async {
+            // every real old db has business_days, the version 8 upgrade adds a column to it
+            await db.execute(
+              'CREATE TABLE business_days (id INTEGER PRIMARY KEY)',
+            );
             await db.execute(
               'CREATE TABLE stock_items (id INTEGER PRIMARY KEY, name TEXT)',
             );
@@ -536,6 +552,10 @@ void main() {
         options: OpenDatabaseOptions(
           version: 5,
           onCreate: (db, version) async {
+            // every real old db has business_days, the version 8 upgrade adds a column to it
+            await db.execute(
+              'CREATE TABLE business_days (id INTEGER PRIMARY KEY)',
+            );
             await db.execute(
               'CREATE TABLE stock_items (id INTEGER PRIMARY KEY, name TEXT)',
             );
@@ -585,6 +605,10 @@ void main() {
         options: OpenDatabaseOptions(
           version: 6,
           onCreate: (db, version) async {
+            // every real old db has business_days, the version 8 upgrade adds a column to it
+            await db.execute(
+              'CREATE TABLE business_days (id INTEGER PRIMARY KEY)',
+            );
             await db.execute(
               'CREATE TABLE stock_items (id INTEGER PRIMARY KEY, name TEXT)',
             );
@@ -611,6 +635,43 @@ void main() {
       // the CHECK rule is there too
       await expectLater(
         upgraded.update('stock_items', {'low_unit': 'cups'}),
+        throwsA(isA<DatabaseException>()),
+      );
+
+      await upgraded.close();
+    });
+
+    test('version 7 days stay and get an empty ai_outcome', () async {
+      // a version 7 file: business_days had no ai_outcome
+      final old = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 7,
+          onCreate: (db, version) async {
+            await db.execute(
+              'CREATE TABLE business_days (id INTEGER PRIMARY KEY, '
+              'business_date TEXT)',
+            );
+            await db.insert('business_days', {'business_date': '2026-11-01'});
+          },
+        ),
+      );
+      await old.close();
+
+      final upgraded = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: DatabaseHelper.version,
+          onUpgrade: DatabaseHelper.onUpgrade,
+        ),
+      );
+
+      final day = (await upgraded.query('business_days')).single;
+      expect(day['business_date'], '2026-11-01');
+      expect(day['ai_outcome'], isNull);
+      await upgraded.update('business_days', {'ai_outcome': 'check_failed'});
+      await expectLater(
+        upgraded.update('business_days', {'ai_outcome': 'maybe'}),
         throwsA(isA<DatabaseException>()),
       );
 
