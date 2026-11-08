@@ -1,22 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../data/email_settings_store.dart';
 import '../data/menu_item_store.dart';
 import '../data/recipe_store.dart';
 import '../data/stock_item_store.dart';
 import '../layout/side_rail.dart';
+import '../security/key_store.dart';
 import '../widgets/placeholder_tab.dart';
 import 'menu/menu_tab.dart';
+import 'settings/settings_tab.dart';
 import 'stock_items/stock_items_tab.dart';
 
 // owner side, only reachable through the pin
 // "unlocked" is not saved anywhere: the owner is unlocked only while this screen is open,
 // so leaving it in any way (lock button, back, home) means the pin is needed again
 class OwnerSectionScreen extends StatefulWidget {
-  const OwnerSectionScreen({super.key, required this.db});
+  const OwnerSectionScreen({super.key, required this.db, this.keys});
 
   // the app's db (or the test db in tests), the owner tabs read and save through it
   final Database db;
+  // where the api keys are kept, null = the real secure storage (tests pass a memory one)
+  final KeyStore? keys;
 
   @override
   State<OwnerSectionScreen> createState() => _OwnerSectionScreenState();
@@ -39,6 +44,10 @@ class _OwnerSectionScreenState extends State<OwnerSectionScreen> {
   late final StockItemStore _stockStore = StockItemStore(widget.db);
   late final MenuItemStore _menuStore = MenuItemStore(widget.db);
   late final RecipeStore _recipeStore = RecipeStore(widget.db);
+  late final EmailSettingsStore _emailStore = EmailSettingsStore(
+    widget.db,
+    widget.keys ?? SecureKeyStore(),
+  );
 
   // listens for the app going to the background
   late final AppLifecycleListener _lifecycle;
@@ -102,10 +111,7 @@ class _OwnerSectionScreenState extends State<OwnerSectionScreen> {
                       stock: _stockStore,
                     ),
                     StockItemsTab(store: _stockStore),
-                    const PlaceholderTab(
-                      title: 'Settings',
-                      note: 'Emails, keys, PIN and backup come in Feature 11.',
-                    ),
+                    SettingsTab(store: _emailStore),
                   ],
                 ),
               ),

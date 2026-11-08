@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -16,6 +17,8 @@ void main() {
   late StockItemStore store;
 
   setUp(() async {
+    // the settings tab reads the keys, a test has no android secure storage so it gets an empty fake one
+    FlutterSecureStorage.setMockInitialValues({});
     db = await openTestDatabase(noIsolate: true);
     store = StockItemStore(db);
   });

@@ -1,8 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- allowBackup off: android auto backup can bring back an old secure storage file that cant be read anymore
+         (crash "Failed to unwrap key"), the app has its own backup in owner settings (rule 13) -->
     <application
         android:label="BrewManager"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:fullBackupContent="false">
         <activity
             android:name=".MainActivity"
             android:exported="true"
