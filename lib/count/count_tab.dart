@@ -213,7 +213,19 @@ class _CountTabState extends State<CountTab> {
       // redraws the table on every letter
       onChanged: (_) => setState(() {}),
       decoration: InputDecoration(
-        hintText: 'Search name',
+        // a widget hint instead of hintText so it can shrink to fit a narrow box instead of ending with "..."
+        // a widget hint doesnt get the grey hint color by itself, so it is set here from the theme
+        hint: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'Search name',
+            maxLines: 1,
+            style:
+                Theme.of(context).inputDecorationTheme.hintStyle ??
+                TextStyle(color: Theme.of(context).hintColor),
+          ),
+        ),
         isDense: true,
         prefixIcon: const Icon(Icons.search),
         suffixIcon: _search.text.isEmpty

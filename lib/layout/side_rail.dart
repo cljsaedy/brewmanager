@@ -153,16 +153,21 @@ class _RailButton extends StatelessWidget {
             children: [
               Icon(icon, size: 20, color: fg),
               const SizedBox(width: 12),
-              // Flexible lets the label shrink and end with "..." if the rail is too narrow
+              // Flexible = the label gets only the space left in the rail
+              // FittedBox scaleDown = if the label doesnt fit (big text size setting, narrow screen)
+              // the text shrinks just enough to fit instead of ending with "...", it never grows bigger
               Flexible(
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                  style: TextStyle(
-                    color: fg,
-                    fontSize: 15,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    style: TextStyle(
+                      color: fg,
+                      fontSize: 15,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                    ),
                   ),
                 ),
               ),
