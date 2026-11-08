@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'data/database_helper.dart';
 import 'layout/app_layout.dart';
+import 'setup/setup_wizard.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
@@ -26,9 +27,10 @@ Future<void> main() async {
 }
 
 class BrewManagerApp extends StatelessWidget {
-  const BrewManagerApp({super.key, this.home = const AppLayout()});
+  const BrewManagerApp({super.key, this.home = const StartScreen()});
 
-  // barista has no login so the app opens straight to the app layout (count tab)
+  // a fresh install (no owner pin) opens the setup wizard first,
+  // after that the barista has no login so the app opens straight to the app layout (count tab)
   // tests pass their own layout here so it doesnt open the real database
   final Widget home;
 

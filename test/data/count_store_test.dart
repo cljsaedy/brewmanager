@@ -95,6 +95,20 @@ void main() {
       expect(draft.day.status, 'draft');
     });
 
+    test(
+      'the very first draft uses the date picked in the setup wizard',
+      () async {
+        await db.insert('app_settings', {
+          'key': CountStore.firstCountDateKey,
+          'value': '2026-10-30',
+        });
+
+        final draft = await store.loadDraft();
+
+        expect(draft.day.businessDate, '2026-10-30');
+      },
+    );
+
     test('loading again gives the same draft, no new lines', () async {
       await stock.add(syrup());
       final first = await store.loadDraft();

@@ -7,12 +7,20 @@ import 'pin_screen_frame.dart';
 
 // shows the new recovery code once, the owner has to write it down or screenshot it
 class RecoveryCodeScreen extends StatelessWidget {
-  const RecoveryCodeScreen({super.key, required this.code, required this.db});
+  const RecoveryCodeScreen({
+    super.key,
+    required this.code,
+    required this.db,
+    this.onSaved,
+  });
 
   // the plain code, only lives in memory while this screen is open
   final String code;
   // passed on to the owner section after "I saved it"
   final Database db;
+  // what "I saved it" does, null = open the owner section (first pin, forgot pin)
+  // change pin in settings goes back to settings, the setup wizard goes to its next step
+  final void Function(BuildContext context)? onSaved;
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +38,11 @@ class RecoveryCodeScreen extends StatelessWidget {
         actions: [
           FilledButton(
             onPressed: () {
+              final saved = onSaved;
+              if (saved != null) {
+                saved(context);
+                return;
+              }
               Navigator.of(context).pushReplacement(
                 MaterialPageRoute(builder: (_) => OwnerSectionScreen(db: db)),
               );

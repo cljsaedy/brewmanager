@@ -19,6 +19,9 @@ import 'tally_store.dart';
 
 // the draft day and its count lines (rule 3 and rule 5)
 class CountStore {
+  // app_settings key of the first count date picked in the setup wizard, YYYY-MM-DD
+  static const String firstCountDateKey = 'first_count_date';
+
   // keys and httpClient are only for the ai summary and sending emails, tests pass fakes, null = the real ones
   CountStore(
     this._db, {
@@ -362,7 +365,16 @@ class CountStore {
       orderBy: 'business_date DESC',
       limit: 1,
     );
-    if (rows.isEmpty) return dateText(_clock().toLocal());
+    // the very first draft: the date picked in the setup wizard, or today when there is none
+    if (rows.isEmpty) {
+      final picked = await txn.query(
+        'app_settings',
+        where: 'key = ?',
+        whereArgs: [firstCountDateKey],
+      );
+      if (picked.isNotEmpty) return picked.first['value'] as String;
+      return dateText(_clock().toLocal());
+    }
 
     return addDays(rows.first['business_date'] as String, 1);
   }

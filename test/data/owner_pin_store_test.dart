@@ -3,6 +3,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:brewmanager/data/email_settings_store.dart';
 import 'package:brewmanager/data/owner_pin_store.dart';
+import 'package:brewmanager/security/key_store.dart';
 
 import '../helpers/test_database.dart';
 
@@ -138,6 +139,56 @@ void main() {
       await store.setPin('5678');
 
       expect(await recoveryEmails(), hasLength(2));
+    });
+  });
+
+  group('a new recovery code (owner settings)', () {
+    test('the old code stops working, the pin stays', () async {
+      final oldCode = await store.setPin('1234');
+
+      final newCode = await store.newRecoveryCode();
+
+      expect(newCode, isNot(oldCode));
+      expect(await store.checkRecoveryCode(oldCode), isFalse);
+      expect(await store.checkRecoveryCode(newCode), isTrue);
+      expect(await store.checkPin('1234'), isTrue);
+    });
+
+    test('it is emailed when an owner email is set', () async {
+      await store.setPin('1234');
+      await EmailSettingsStore(
+        db,
+        MemoryKeyStore(),
+      ).saveEmails(ownerEmail: 'owner@example.com', senderEmail: '');
+
+      final code = await store.newRecoveryCode();
+
+      final emails = await db.query('outbox', where: "kind = 'recovery'");
+      expect(emails, hasLength(1));
+      expect(emails.single['html_body'], contains(code));
+    });
+  });
+
+  group('the setup wizard emails the code later', () {
+    test('nothing is queued without an owner email', () async {
+      final code = await store.setPin('1234');
+
+      await store.emailRecoveryCode(code);
+
+      expect(await db.query('outbox'), isEmpty);
+    });
+
+    test('queued once the owner email is saved', () async {
+      final code = await store.setPin('1234');
+      await EmailSettingsStore(
+        db,
+        MemoryKeyStore(),
+      ).saveEmails(ownerEmail: 'owner@example.com', senderEmail: '');
+
+      await store.emailRecoveryCode(code);
+
+      final emails = await db.query('outbox', where: "kind = 'recovery'");
+      expect(emails.single['html_body'], contains(code));
     });
   });
 }

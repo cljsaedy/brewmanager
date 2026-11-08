@@ -3,8 +3,11 @@ import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
 
 import '../data/analytics_store.dart';
+import '../data/backup_files.dart';
+import '../data/backup_store.dart';
 import '../data/email_settings_store.dart';
 import '../data/menu_item_store.dart';
+import '../data/owner_pin_store.dart';
 import '../data/recipe_store.dart';
 import '../data/sent_reports_store.dart';
 import '../data/stock_item_store.dart';
@@ -27,6 +30,7 @@ class OwnerSectionScreen extends StatefulWidget {
     this.keys,
     this.httpClient,
     this.emailViewer,
+    this.backupFiles = const DeviceBackupFiles(),
   });
 
   // the app's db (or the test db in tests), the owner tabs read and save through it
@@ -37,6 +41,8 @@ class OwnerSectionScreen extends StatefulWidget {
   final http.Client? httpClient;
   // shows an email in reports, null = the webview (tests pass a simple one, a webview cant run in tests)
   final EmailViewBuilder? emailViewer;
+  // where backups are saved and picked, tests pass a fake
+  final BackupFiles backupFiles;
 
   @override
   State<OwnerSectionScreen> createState() => _OwnerSectionScreenState();
@@ -69,6 +75,8 @@ class _OwnerSectionScreenState extends State<OwnerSectionScreen> {
   late final OutboxSender _sender = OutboxSender(widget.db, _keys, _http);
   late final SentReportsStore _reports = SentReportsStore(widget.db);
   late final AnalyticsStore _analytics = AnalyticsStore(widget.db);
+  late final OwnerPinStore _pins = OwnerPinStore(widget.db);
+  late final BackupStore _backup = BackupStore(widget.db);
 
   // listens for the app going to the background
   late final AppLifecycleListener _lifecycle;
@@ -133,7 +141,13 @@ class _OwnerSectionScreenState extends State<OwnerSectionScreen> {
                       stock: _stockStore,
                     ),
                     StockItemsTab(store: _stockStore),
-                    SettingsTab(store: _emailStore),
+                    SettingsTab(
+                      store: _emailStore,
+                      pins: _pins,
+                      backup: _backup,
+                      sender: _sender,
+                      files: widget.backupFiles,
+                    ),
                   ],
                 ),
               ),

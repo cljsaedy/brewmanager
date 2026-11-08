@@ -52,6 +52,31 @@ class OwnerPinStore {
     return code;
   }
 
+  // makes a new recovery code without changing the pin, from owner settings
+  // the old code stops working, the new one is emailed if an owner email is set
+  // gives back the plain code so the screen can show it once
+  Future<String> newRecoveryCode() async {
+    final code = PinHasher.newRecoveryCode();
+    final codeSalt = PinHasher.newSalt();
+    await _db.transaction((txn) async {
+      await _write(
+        txn,
+        recoveryHashKey,
+        PinHasher.hash(PinHasher.normalizeRecoveryCode(code), codeSalt),
+      );
+      await _write(txn, recoverySaltKey, codeSalt);
+      await _queueRecoveryEmail(txn, code);
+    });
+    return code;
+  }
+
+  // the setup wizard sets the pin before the owner email exists, so the code couldnt be emailed then
+  // it keeps the plain code in memory and calls this once the owner email is saved
+  // nothing happens if there is still no owner email (the owner skipped it)
+  Future<void> emailRecoveryCode(String code) {
+    return _db.transaction((txn) => _queueRecoveryEmail(txn, code));
+  }
+
   // emails the new code to the owner too, only if an owner email is set (rule 11)
   // an older recovery email that wasnt sent yet is removed first, its code just stopped working
   // the body gets blanked after it is sent (see OutboxSender) so the plain code doesnt stay in the db

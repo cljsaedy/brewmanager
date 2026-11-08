@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -143,9 +146,27 @@ class DatabaseHelper {
     }
   }
 
-  // closes the db, needed later for restore (close, swap the file, open again)
+  // closes the db, needed for restore (close, swap the file, open again)
   static Future<void> close() async {
     await _db?.close();
     _db = null;
+  }
+
+  // restore (rule 13): puts a checked backup in place of the app's db file, then opens it again
+  // the caller already checked the bytes are a brewmanager db (BackupStore.check) and the owner said yes
+  // every store made before this holds the old closed db, so the screens must start fresh after it
+  // (the owner section closes and the app layout makes a new count store from DatabaseHelper.database)
+  // an older backup gets its tables brought up to date by onUpgrade when it opens
+  static Future<void> replaceWith(Uint8List bytes) async {
+    final path = join(await getDatabasesPath(), fileName);
+    await close();
+    await File(path).writeAsBytes(bytes, flush: true);
+    // sqlite's side files of the old db (wal = changes not merged in yet, shm = its index,
+    // journal = undo info) would mix the old db into the new one, so they go
+    for (final extra in ['-wal', '-shm', '-journal']) {
+      final file = File('$path$extra');
+      if (await file.exists()) await file.delete();
+    }
+    await database;
   }
 }
