@@ -333,4 +333,55 @@ void main() {
     expect(find.text('Latte × 1'), findsOneWidget);
     expect((await savedLines(tester)).single['day_id'], dayId);
   });
+
+  // like a restore: when the owner section closes, the app layout gets a store on another db
+  // the tabs must start again with that new store, not stay on the old one
+  testWidgets('after the owner section, the tally shows the new db (restore)', (
+    tester,
+  ) async {
+    await addItem(tester, 'Latte');
+    // the "restored" db: same menu item, and 3 lattes already tallied on its draft
+    final restored = await openTestDatabase(noIsolate: true);
+    addTearDown(restored.close);
+    await tester.runAsync(() async {
+      final latte = await MenuItemStore(
+        restored,
+      ).add(const MenuItem(name: 'Latte', category: 'Coffee'));
+      final day = await CountStore(restored).loadDraft();
+      for (var i = 0; i < 3; i++) {
+        await TallyStore(restored).add(day.day.id, latte);
+      }
+    });
+    // flips at the moment of the restore, the app can ask for its store several times before that
+    var restoredNow = false;
+    useTabletScreen(tester);
+    await tester.pumpWidget(
+      BrewManagerApp(
+        home: AppLayout(
+          openCountStore: () async => CountStore(restoredNow ? restored : db),
+        ),
+      ),
+    );
+    await waitForDb(tester);
+    await tester.tap(find.text('Tally'));
+    await tester.pumpAndSettle();
+    expect(find.text('Latte × 3'), findsNothing);
+
+    // a screen opens on top and closes again, like the owner section after a restore
+    final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+    navigator.push(
+      MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: Text('Owner')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // a restore closes the old db before the owner section closes
+    await tester.runAsync(db.close);
+    restoredNow = true;
+    navigator.pop();
+    await waitForDb(tester);
+    await waitForDb(tester);
+
+    expect(find.text('Latte × 3'), findsOneWidget);
+  });
 }

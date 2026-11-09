@@ -123,4 +123,34 @@ void main() {
     // the app db is still open and works
     expect(await db.query('app_settings'), isNotEmpty);
   });
+
+  // android 9+ saves db files in wal mode, the pc doesnt, so this makes the tablet's kind of file
+  test('a backup saved in wal mode (like android) is accepted', () async {
+    await db.rawQuery('PRAGMA journal_mode = WAL');
+    await db.insert('business_days', {
+      'business_date': '2026-11-08',
+      'status': 'submitted',
+    });
+
+    final snapshot = await store().snapshot();
+    // byte 18 of a sqlite file is 2 when the file is in wal mode
+    expect(snapshot.bytes[18], 2);
+    final check = await BackupStore.check(
+      snapshot.bytes,
+      factory: databaseFactoryFfi,
+    );
+
+    expect(check.isValid, isTrue);
+    expect(check.newestDay, '2026-11-08');
+  });
+
+  test('a file that cant be opened says why', () async {
+    final check = await BackupStore.check(
+      Uint8List.fromList('hello'.codeUnits),
+      factory: databaseFactoryFfi,
+    );
+
+    expect(check.isValid, isFalse);
+    expect(check.problem, isNotNull);
+  });
 }

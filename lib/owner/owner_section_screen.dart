@@ -16,6 +16,7 @@ import '../layout/side_rail.dart';
 import '../security/key_store.dart';
 import 'analytics/analytics_tab.dart';
 import 'menu/menu_tab.dart';
+import 'owner_lock.dart';
 import 'reports/reports_tab.dart';
 import 'settings/settings_tab.dart';
 import 'stock_items/stock_items_tab.dart';
@@ -98,6 +99,8 @@ class _OwnerSectionScreenState extends State<OwnerSectionScreen> {
   // close everything on top of the barista side, that is the lock
   void _lock() {
     if (!mounted) return;
+    // the app's own file picker (back up, restore) is open, that isnt the owner leaving
+    if (OwnerLock.isPaused) return;
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 

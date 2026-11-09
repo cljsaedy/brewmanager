@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 
 import '../../data/backup_files.dart';
 import '../../data/backup_store.dart';
-import '../../data/database_helper.dart';
 import '../../data/email_settings_store.dart';
 import '../../data/owner_pin_store.dart';
 import '../../email/outbox_sender.dart';
@@ -15,6 +14,7 @@ import '../../security/key_store.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/message_box.dart';
 import '../create_pin_screen.dart';
+import '../owner_lock.dart';
 import '../recovery_code_screen.dart';
 
 // owner settings: emails and ai keys (feature 9), then pin and backup (feature 11)
@@ -27,7 +27,7 @@ class SettingsTab extends StatefulWidget {
     this.backup,
     this.sender,
     this.files = const DeviceBackupFiles(),
-    this.restoreDatabase = DatabaseHelper.replaceWith,
+    this.restoreDatabase = restoreAndCheck,
     this.onWizardNext,
   });
 
@@ -40,7 +40,8 @@ class SettingsTab extends StatefulWidget {
   // where backups are saved and picked, tests pass a fake
   final BackupFiles files;
   // puts a restored db in place, tests pass a fake so the real db file is never touched
-  final Future<void> Function(Uint8List bytes) restoreDatabase;
+  // gives back true when the db in use really is the backup now (see restoreAndCheck)
+  final Future<bool> Function(Uint8List bytes) restoreDatabase;
   // setup wizard mode: called after save and continue or skip, null = normal owner settings
   final VoidCallback? onWizardNext;
 
@@ -66,6 +67,9 @@ class _SettingsTabState extends State<SettingsTab> {
   String? _lastBackup;
   // true while a backup or restore runs, its buttons are off
   bool _busy = false;
+  // why the last restore was refused, shown right under the backup buttons
+  // (the error box on top is out of sight when the owner has scrolled down to restore)
+  String? _restoreError;
 
   bool get _inWizard => widget.onWizardNext != null;
 
@@ -347,7 +351,10 @@ class _SettingsTabState extends State<SettingsTab> {
     try {
       final snapshot = await backup.snapshot();
       final name = 'brewmanager-backup-${dateText(DateTime.now())}.db';
-      final saved = await widget.files.save(name, snapshot.bytes);
+      // the save screen puts the app in the background, the owner section must not lock for it
+      final saved = await OwnerLock.pauseWhile(
+        () => widget.files.save(name, snapshot.bytes),
+      );
       if (!saved) {
         // cancelled, so the last real backup time stays
         await backup.undoSnapshot(snapshot.oldTime);
@@ -364,16 +371,24 @@ class _SettingsTabState extends State<SettingsTab> {
 
   // restore (rule 13): pick a file, check it is a brewmanager db, ask, then replace everything
   Future<void> _restore() async {
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _restoreError = null;
+    });
     try {
-      final bytes = await widget.files.pick();
+      // same for the open screen
+      final bytes = await OwnerLock.pauseWhile(widget.files.pick);
       if (bytes == null || !mounted) return;
       final check = await BackupStore.check(bytes);
       if (!mounted) return;
       if (!check.isValid) {
+        // the real error when the file couldnt be opened, so a problem on the tablet can be found
+        final problem = check.problem;
         setState(
-          () => _error =
-              'That file is not a BrewManager backup, so nothing was changed.',
+          () => _restoreError = problem == null
+              ? 'That file is not a BrewManager backup, so nothing was changed.'
+              : 'That file could not be opened as a BrewManager backup, so '
+                    'nothing was changed. ($problem)',
         );
         return;
       }
@@ -390,23 +405,38 @@ class _SettingsTabState extends State<SettingsTab> {
 
       final navigator = Navigator.of(context);
       final messenger = ScaffoldMessenger.of(context);
-      await widget.restoreDatabase(bytes);
-      // every open screen still holds the old db, so the owner section closes
-      // and the barista side starts fresh with the restored one
+      final took = await widget.restoreDatabase(bytes);
+      if (!took) {
+        if (mounted) {
+          setState(
+            () => _restoreError =
+                'The restore did not take effect: the app is still using '
+                'the data from before.',
+          );
+        }
+        return;
+      }
+      // every open screen still shows the data from before, so the owner section closes
+      // and the barista side reads everything again (the pin also changed to the backup's)
       navigator.popUntil((route) => route.isFirst);
       messenger
         ..clearSnackBars()
         ..showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'Backup restored. The owner PIN is now the one from the backup. '
-              'API keys stay as they were on this tablet.',
+              'Restored the backup from ${_backupDate(check)}. The owner PIN '
+              'is now the one from the backup. API keys stay as they were '
+              'on this tablet.',
             ),
-            duration: Duration(seconds: 6),
+            duration: const Duration(seconds: 8),
           ),
         );
     } catch (error) {
-      _message('The backup could not be restored: $error');
+      if (mounted) {
+        setState(
+          () => _restoreError = 'The backup could not be restored: $error',
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -525,6 +555,14 @@ class _SettingsTabState extends State<SettingsTab> {
             ),
           ],
         ),
+        if (_restoreError != null) ...[
+          const SizedBox(height: 12),
+          MessageBox(
+            key: const Key('restore_error'),
+            text: _restoreError!,
+            isError: true,
+          ),
+        ],
       ],
     );
   }

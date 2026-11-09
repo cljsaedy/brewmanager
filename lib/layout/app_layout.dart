@@ -94,14 +94,16 @@ class _AppLayoutState extends State<AppLayout> with RouteAware {
   // IndexedStack keeps this tab alive so it wont read the db by itself, the owner could have changed stock items
   // this cant be done after the await in _openOwner, the pin screen swaps itself for the owner section
   // so that await ends when the pin is right, not when the owner leaves
+  // the tabs start fresh only once the new store is loaded, in the same setState
+  // (a restore swaps the db: starting them before the load would give them the old closed db)
   @override
   void didPopNext() {
-    setState(() => _countTabVersion++);
-    _loadDraft();
+    _loadDraft(freshTabs: true);
   }
 
   // gets the draft day ready and reads it, then redraws
-  Future<void> _loadDraft() async {
+  // freshTabs = also start the tabs again, after the owner section closed (see didPopNext)
+  Future<void> _loadDraft({bool freshTabs = false}) async {
     final store = await widget.openCountStore();
     if (!_outboxStarted) {
       _outboxStarted = true;
@@ -115,6 +117,7 @@ class _AppLayoutState extends State<AppLayout> with RouteAware {
     setState(() {
       _draft = draft;
       _countStore = store;
+      if (freshTabs) _countTabVersion++;
     });
   }
 

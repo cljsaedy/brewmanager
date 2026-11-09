@@ -57,6 +57,8 @@ void main() {
   late OwnerPinStore pins;
   // the bytes the restore fake got, null = restore never ran
   Uint8List? restored;
+  // what the fake restore answers: true = the swap took
+  late bool swapTook;
   // a real brewmanager db file as bytes, for restore
   late Uint8List backupBytes;
 
@@ -89,6 +91,7 @@ void main() {
     files = FakeBackupFiles();
     pins = OwnerPinStore(db);
     restored = null;
+    swapTook = true;
   });
 
   tearDown(() async {
@@ -118,7 +121,10 @@ void main() {
             pins: pins,
             backup: FakeBackupStore(db),
             files: files,
-            restoreDatabase: (bytes) async => restored = bytes,
+            restoreDatabase: (bytes) async {
+              restored = bytes;
+              return swapTook;
+            },
           ),
         ),
       ),
@@ -220,7 +226,10 @@ void main() {
     await tapAndWait(tester, 'confirm_restore');
 
     expect(restored, backupBytes);
-    expect(find.textContaining('Backup restored.'), findsOneWidget);
+    expect(
+      find.textContaining('Restored the backup from Sun, Nov 1'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('restore cancelled at the question changes nothing', (
@@ -243,11 +252,36 @@ void main() {
     await tapAndWait(tester, 'restore');
 
     expect(restored, isNull);
+    // shown right under the backup buttons, with the reason
+    final box = find.byKey(const Key('restore_error'));
+    expect(box, findsOneWidget);
     expect(
-      find.text(
-        'That file is not a BrewManager backup, so nothing was changed.',
+      find.descendant(
+        of: box,
+        matching: find.textContaining('nothing was changed'),
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('a restore that didnt take says so and stays on settings', (
+    tester,
+  ) async {
+    files.toPick = backupBytes;
+    // the db in use after the swap still has the old data
+    swapTook = false;
+    await openSettings(tester);
+
+    await tapAndWait(tester, 'restore');
+    await tapAndWait(tester, 'confirm_restore');
+
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('restore_error')),
+        matching: find.textContaining('The restore did not take effect'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('restore')), findsOneWidget);
   });
 }
